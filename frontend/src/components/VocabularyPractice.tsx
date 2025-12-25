@@ -4,6 +4,18 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import {
+    RotateCcw,
+    Check,
+    Sparkles,
+    BookOpen,
+    Info,
+    Quote,
+    ChevronRight,
+    Trophy,
+    ArrowRight
+} from 'lucide-react';
+import Link from 'next/link';
 
 interface Flashcard {
     id: number;
@@ -49,89 +61,162 @@ export default function VocabularyPractice({ initialCards }: VocabularyPracticeP
 
     if (sessionComplete) {
         return (
-            <div className="text-center py-12">
-                <div className="text-6xl mb-4">🧠</div>
-                <h2 className="text-3xl font-bold text-white mb-2">Review Complete!</h2>
-                <p className="text-white/60">You've reviewed all due cards for now.</p>
-                <div className="mt-8">
-                    <a href="/dashboard" className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition font-bold text-white">Back to Dashboard</a>
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="card p-16 text-center !rounded-[3rem] bg-slate-900 text-white shadow-2xl shadow-blue-900/10 border-none relative overflow-hidden"
+            >
+                <div className="absolute top-0 left-0 p-10 opacity-10">
+                    <Trophy className="w-40 h-40" />
                 </div>
-            </div>
-        );
-    }
 
-    if (!currentCard) {
-        return (
-            <div className="text-center py-12">
-                <h2 className="text-2xl font-bold text-white mb-2">No cards due</h2>
-                <p className="text-white/60">Check back later or add new words!</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="max-w-md mx-auto">
-            <div className="mb-4 text-center text-white/50 text-sm">
-                Card {currentIndex + 1} of {cards.length}
-            </div>
-
-            <div className="relative h-96 w-full cursor-pointer perspective-1000" onClick={handleFlip}>
-                <motion.div
-                    className="w-full h-full relative preserve-3d transition-all duration-500"
-                    animate={{ rotateY: isFlipped ? 180 : 0 }}
-                    transition={{ duration: 0.6, type: "spring", stiffness: 260, damping: 20 }}
-                    style={{ transformStyle: 'preserve-3d' }}
-                >
-                    {/* Front */}
-                    <div className="absolute w-full h-full backface-hidden bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl flex flex-col items-center justify-center p-8 shadow-xl">
-                        <span className="text-xs font-bold text-rose-400 tracking-widest uppercase mb-4">Word</span>
-                        <h2 className="text-4xl font-bold text-white text-center">{currentCard.word}</h2>
-                        <p className="text-white/40 text-sm mt-8">Click to flip</p>
+                <div className="relative z-10 space-y-8">
+                    <div className="w-24 h-24 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-white/10">
+                        <Sparkles className="w-12 h-12 text-blue-400" />
+                    </div>
+                    <div>
+                        <h2 className="text-4xl font-black mb-2 tracking-tight">Review Complete!</h2>
+                        <p className="text-blue-100/60 font-medium text-lg">You've successfully mastered your vocabulary goal for today.</p>
                     </div>
 
-                    {/* Back */}
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+                        <Link
+                            href="/dashboard"
+                            className="btn-primary !bg-white !text-slate-900 hover:!bg-blue-50 py-4 px-10 !rounded-2xl w-full sm:w-auto"
+                        >
+                            Return Home
+                        </Link>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="flex items-center gap-2 font-black text-white/70 hover:text-white transition-colors uppercase tracking-widest text-xs px-6"
+                        >
+                            <RotateCcw className="w-4 h-4" />
+                            Another Session
+                        </button>
+                    </div>
+                </div>
+            </motion.div>
+        );
+    }
+
+    if (!currentCard) return null;
+
+    return (
+        <div className="max-w-2xl mx-auto">
+            {/* Progress Header */}
+            <div className="flex items-center justify-between mb-8 px-4">
+                <div className="flex items-center gap-3">
+                    <div className="h-2 w-48 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <motion.div
+                            className="h-full bg-blue-600"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${((currentIndex + 1) / cards.length) * 100}%` }}
+                        />
+                    </div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        {currentIndex + 1} / {cards.length}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-full">
+                    <Sparkles className="w-3 h-3 text-blue-600" />
+                    <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-tighter">SRS Active</span>
+                </div>
+            </div>
+
+            <div className="relative h-[28rem] w-full perspective-1000 group cursor-pointer" onClick={handleFlip}>
+                <motion.div
+                    className="w-full h-full relative preserve-3d"
+                    animate={{ rotateY: isFlipped ? 180 : 0 }}
+                    transition={{ duration: 0.6, type: "spring", stiffness: 200, damping: 20 }}
+                    style={{ transformStyle: 'preserve-3d' }}
+                >
+                    {/* Front: The Word */}
+                    <div className="absolute w-full h-full backface-hidden card !rounded-[3rem] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center p-12 shadow-2xl shadow-slate-200/50 dark:shadow-none overflow-hidden hover:border-blue-200/50 transition-colors">
+                        <div className="absolute top-0 left-0 p-8 opacity-5">
+                            <BookOpen className="w-32 h-32" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 tracking-[0.3em] uppercase mb-6 flex items-center gap-2">
+                            <Sparkles className="w-3 h-3 text-blue-600" />
+                            Memorize Target
+                        </span>
+                        <h2 className="text-6xl font-black text-slate-900 dark:text-white text-center leading-tight tracking-tighter">{currentCard.word}</h2>
+
+                        <div className="mt-12 flex items-center gap-2 text-blue-600 font-black uppercase tracking-widest text-[10px]">
+                            Tap to reveal definition
+                            <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+                        </div>
+                    </div>
+
+                    {/* Back: Definition & Context */}
                     <div
-                        className="absolute w-full h-full backface-hidden bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20 rounded-2xl flex flex-col items-center justify-center p-8 shadow-xl"
+                        className="absolute w-full h-full backface-hidden card !rounded-[3rem] bg-slate-900 text-white border-none flex flex-col p-12 shadow-2xl overflow-hidden"
                         style={{ transform: 'rotateY(180deg)' }}
                     >
-                        <span className="text-xs font-bold text-indigo-300 tracking-widest uppercase mb-2">Definition</span>
-                        <p className="text-xl text-white text-center font-medium mb-6">{currentCard.definition}</p>
+                        <div className="absolute bottom-0 right-0 p-8 opacity-10">
+                            <Info className="w-40 h-40" />
+                        </div>
 
-                        {currentCard.context && (
-                            <div className="bg-black/20 p-4 rounded-lg w-full">
-                                <span className="text-[10px] text-white/40 uppercase block mb-1">Context</span>
-                                <p className="text-sm text-white/80 italic">"{currentCard.context}"</p>
-                            </div>
-                        )}
+                        <div className="relative z-10 flex-1 flex flex-col justify-center">
+                            <span className="text-[10px] font-black text-blue-400 tracking-[0.3em] uppercase mb-4 flex items-center gap-2">
+                                <Info className="w-3 h-3" />
+                                Definition
+                            </span>
+                            <p className="text-3xl font-black text-white leading-tight mb-10">{currentCard.definition}</p>
+
+                            {currentCard.context && (
+                                <div className="bg-white/5 border border-white/5 p-8 rounded-[2rem] relative mt-auto group">
+                                    <Quote className="absolute top-6 left-6 w-8 h-8 text-white/5 -translate-x-2 -translate-y-2" />
+                                    <span className="text-[10px] font-black text-slate-500 uppercase block mb-3 tracking-widest">In Context</span>
+                                    <p className="text-sm text-slate-300 font-medium leading-relaxed italic relative z-10">
+                                        "{currentCard.context}"
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </motion.div>
             </div>
 
             {/* Controls */}
-            <div className={`mt-8 grid grid-cols-4 gap-3 transition-opacity duration-300 ${isFlipped ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                <button onClick={(e) => { e.stopPropagation(); handleRate(0); }} className="py-3 rounded-xl bg-red-500/20 text-red-300 font-bold hover:bg-red-500/30 transition text-sm">
-                    Again
-                    <div className="text-[10px] font-normal opacity-70">&lt; 1m</div>
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); handleRate(3); }} className="py-3 rounded-xl bg-orange-500/20 text-orange-300 font-bold hover:bg-orange-500/30 transition text-sm">
-                    Hard
-                    <div className="text-[10px] font-normal opacity-70">2d</div>
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); handleRate(4); }} className="py-3 rounded-xl bg-blue-500/20 text-blue-300 font-bold hover:bg-blue-500/30 transition text-sm">
-                    Good
-                    <div className="text-[10px] font-normal opacity-70">4d</div>
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); handleRate(5); }} className="py-3 rounded-xl bg-green-500/20 text-green-300 font-bold hover:bg-green-500/30 transition text-sm">
-                    Easy
-                    <div className="text-[10px] font-normal opacity-70">7d</div>
-                </button>
-            </div>
+            <AnimatePresence>
+                {isFlipped && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4"
+                    >
+                        <button onClick={(e) => { e.stopPropagation(); handleRate(0); }} className="flex flex-col items-center gap-1 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 group transition-all">
+                            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Again</span>
+                            <span className="font-black text-slate-900 dark:text-white group-hover:text-rose-600 transition-colors">Bad</span>
+                            <span className="text-[8px] font-black text-slate-300 uppercase mt-1 tracking-tighter">&lt; 1m</span>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleRate(3); }} className="flex flex-col items-center gap-1 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-900/20 group transition-all">
+                            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Hard</span>
+                            <span className="font-black text-slate-900 dark:text-white group-hover:text-amber-600 transition-colors">Struggled</span>
+                            <span className="text-[8px] font-black text-slate-300 uppercase mt-1 tracking-tighter">2d</span>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleRate(4); }} className="flex flex-col items-center gap-1 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 group transition-all">
+                            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Good</span>
+                            <span className="font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">Remembered</span>
+                            <span className="text-[8px] font-black text-slate-300 uppercase mt-1 tracking-tighter">4d</span>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleRate(5); }} className="flex flex-col items-center gap-1 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 group transition-all">
+                            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Easy</span>
+                            <span className="font-black text-slate-900 dark:text-white group-hover:text-emerald-600 transition-colors">Instinct</span>
+                            <span className="text-[8px] font-black text-slate-300 uppercase mt-1 tracking-tighter">7d</span>
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {!isFlipped && (
-                <div className="mt-8 text-center text-white/30 text-sm">
-                    Tap card to reveal definition
+                <div className="mt-10 flex items-center justify-center gap-3 text-slate-400 font-black uppercase tracking-[0.2em] text-[10px]">
+                    <div className="w-8 h-px bg-slate-100 dark:bg-slate-800" />
+                    Interact with the card
+                    <div className="w-8 h-px bg-slate-100 dark:bg-slate-800" />
                 </div>
             )}
         </div>
     );
 }
+

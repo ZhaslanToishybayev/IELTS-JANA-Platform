@@ -13,6 +13,13 @@ class User(Base):
     username = Column(String(100), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     
+    # Email verification
+    is_email_verified = Column(Boolean, default=False)
+    email_verified_at = Column(DateTime, nullable=True)
+    
+    # Account status
+    is_active = Column(Boolean, default=True)
+    
     # Gamification stats
     xp = Column(Integer, default=0)
     level = Column(Integer, default=1)
@@ -218,4 +225,54 @@ class MockTestSession(Base):
     
     # Relationships
     user = relationship("User", backref="mock_sessions")
+
+
+class Achievement(Base):
+    """Achievement definitions for gamification."""
+    __tablename__ = "achievements"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(50), unique=True, nullable=False)  # e.g., "FIRST_CORRECT", "STREAK_7"
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    icon = Column(String(100), default="🏆")  # Emoji or icon name
+    
+    # Achievement category
+    category = Column(String(50), nullable=False)  # STREAK, ACCURACY, LEVEL, PROGRESS, SPECIAL
+    
+    # Requirement to unlock (JSON)
+    # e.g., {"type": "streak", "value": 7} or {"type": "accuracy", "value": 0.9, "min_attempts": 50}
+    requirement = Column(JSON, nullable=False)
+    
+    # Reward
+    xp_reward = Column(Integer, default=50)
+    
+    # Rarity: COMMON, UNCOMMON, RARE, EPIC, LEGENDARY
+    rarity = Column(String(20), default="COMMON")
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    
+    # Relationships
+    user_achievements = relationship("UserAchievement", back_populates="achievement")
+
+
+class UserAchievement(Base):
+    """Tracks which achievements a user has unlocked."""
+    __tablename__ = "user_achievements"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    achievement_id = Column(Integer, ForeignKey("achievements.id"), nullable=False)
+    
+    # When unlocked
+    unlocked_at = Column(DateTime, server_default=func.now())
+    
+    # Progress for incomplete achievements (0.0 - 1.0)
+    progress = Column(Float, default=1.0)
+    
+    # Relationships
+    user = relationship("User", backref="achievements")
+    achievement = relationship("Achievement", back_populates="user_achievements")
+
 

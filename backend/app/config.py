@@ -29,9 +29,25 @@ class Settings(BaseSettings):
     # AI Configuration
     gemini_api_key: str | None = None
     
+    # Email Configuration (SMTP)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str = "noreply@ielts-jana.com"
+    smtp_from_name: str = "IELTS JANA"
+    smtp_use_tls: bool = True
+    
+    # Frontend URL for email links
+    frontend_url: str = "http://localhost:3000"
+    
+    # Email token expiry
+    email_verification_expire_hours: int = 24
+    password_reset_expire_hours: int = 1
+    
     class Config:
         env_file = ".env"
-        extra = "ignore" # Allow extra env vars without erroring
+        extra = "ignore"  # Allow extra env vars without erroring
 
 
 @lru_cache()

@@ -6,7 +6,7 @@ from .schemas import (
     AttemptCreate, AttemptResponse,
     SkillProgress, DashboardResponse, ProgressHistoryItem,
     SkillTreeNode, SkillTreeResponse,
-    NextQuestionResponse
+    NextQuestionResponse, MockSessionResponse
 )
 
 __all__ = [
@@ -17,5 +17,6 @@ __all__ = [
     "AttemptCreate", "AttemptResponse",
     "SkillProgress", "DashboardResponse", "ProgressHistoryItem",
     "SkillTreeNode", "SkillTreeResponse",
-    "NextQuestionResponse"
+    "NextQuestionResponse", "MockSessionResponse"
 ]
+

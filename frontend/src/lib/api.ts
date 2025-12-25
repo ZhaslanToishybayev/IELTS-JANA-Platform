@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
 
 interface FetchOptions extends RequestInit {
     token?: string;
@@ -320,7 +320,164 @@ class ApiClient {
         }>(`/mock/${sessionId}`, { token });
     }
 
+    // ============ Achievements ============
+    async getAchievements(token: string) {
+        return this.fetch<{
+            total: number;
+            unlocked: number;
+            achievements: {
+                id: number;
+                code: string;
+                name: string;
+                description: string;
+                icon: string;
+                category: string;
+                xp_reward: number;
+                rarity: string;
+                is_unlocked: boolean;
+                unlocked_at: string | null;
+            }[];
+            by_category: Record<string, any[]>;
+        }>('/achievements', { token });
+    }
+
+    async getUnlockedAchievements(token: string) {
+        return this.fetch<{
+            count: number;
+            achievements: {
+                id: number;
+                code: string;
+                name: string;
+                description: string;
+                icon: string;
+                xp_reward: number;
+                rarity: string;
+                unlocked_at: string;
+            }[];
+        }>('/achievements/unlocked', { token });
+    }
+
+    async checkNewAchievements(token: string) {
+        return this.fetch<{
+            new_achievements: {
+                code: string;
+                name: string;
+                description: string;
+                icon: string;
+                xp_reward: number;
+                rarity: string;
+            }[];
+            total_xp_earned: number;
+        }>('/achievements/check', { method: 'POST', token });
+    }
+
+    // ============ Email Verification ============
+    async verifyEmail(token: string) {
+        return this.fetch<{ message: string }>('/auth/verify-email', {
+            method: 'POST',
+            body: JSON.stringify({ token }),
+        });
+    }
+
+    async resendVerification(email: string) {
+        return this.fetch<{ message: string }>('/auth/resend-verification', {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+        });
+    }
+
+    async forgotPassword(email: string) {
+        return this.fetch<{ message: string }>('/auth/forgot-password', {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+        });
+    }
+
+    async resetPassword(resetToken: string, newPassword: string) {
+        return this.fetch<{ message: string }>('/auth/reset-password', {
+            method: 'POST',
+            body: JSON.stringify({ token: resetToken, new_password: newPassword }),
+        });
+    }
+
+    // ============ Listening ============
+    async getListeningQuestions(token: string, difficulty?: number, limit = 10) {
+        const params = new URLSearchParams();
+        if (difficulty) params.append('difficulty', difficulty.toString());
+        params.append('limit', limit.toString());
+
+        return this.fetch<{
+            count: number;
+            questions: {
+                id: number;
+                skill_id: number;
+                passage_title: string | null;
+                question_text: string;
+                question_type: string;
+                options: string[] | null;
+                difficulty: number;
+                audio_url: string;
+                audio_duration_sec: number | null;
+            }[];
+        }>(`/listening/questions?${params.toString()}`, { token });
+    }
+
+    async getListeningQuestion(token: string, questionId: number) {
+        return this.fetch<{
+            id: number;
+            skill_id: number;
+            passage_title: string | null;
+            question_text: string;
+            question_type: string;
+            options: string[] | null;
+            difficulty: number;
+            audio_url: string;
+            audio_duration_sec: number | null;
+        }>(`/listening/questions/${questionId}`, { token });
+    }
+
+    async getListeningTranscript(token: string, questionId: number) {
+        return this.fetch<{
+            question_id: number;
+            transcript: string;
+            passage_title: string | null;
+        }>(`/listening/transcript/${questionId}`, { token });
+    }
+
+    async submitListeningAnswer(token: string, questionId: number, answer: string, responseTimeMs: number) {
+        return this.fetch<{
+            is_correct: boolean;
+            correct_answer: string;
+            explanation: string | null;
+            xp_earned: number;
+            transcript_available: boolean;
+        }>('/listening/submit', {
+            method: 'POST',
+            token,
+            body: JSON.stringify({
+                question_id: questionId,
+                user_answer: answer,
+                response_time_ms: responseTimeMs,
+            }),
+        });
+    }
+
+    async getListeningProgress(token: string) {
+        return this.fetch<{
+            total_attempts: number;
+            correct_attempts: number;
+            accuracy: number;
+            questions_completed: number;
+            questions_available: number;
+            completion_percentage: number;
+        }>('/listening/progress', { token });
+    }
+
+    getAudioUrl(questionId: number) {
+        return `${this.baseUrl}/listening/audio/${questionId}`;
+    }
 
 }
 
 export const api = new ApiClient(API_URL);
+

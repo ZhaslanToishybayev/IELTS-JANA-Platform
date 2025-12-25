@@ -15,7 +15,8 @@ pytest==7.4.4
 httpx==0.26.0
 google-generativeai
 python-dotenv
-python-multipart
 alembic
 beautifulsoup4
 requests
+slowapi==0.1.9
+

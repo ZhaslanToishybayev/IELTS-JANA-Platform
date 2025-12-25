@@ -3,6 +3,29 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
+import { api } from '@/lib/api';
+import { SpeakingFeedback } from '@/components/SpeakingFeedback';
+import {
+    ArrowLeft,
+    Mic,
+    MicOff,
+    Clock,
+    Play,
+    RotateCcw,
+    CheckCircle2,
+    AlertCircle,
+    Sparkles,
+    ChevronRight,
+    TrendingUp,
+    Volume2,
+    Award,
+    BookOpen,
+    Info,
+    History,
+    StopCircle,
+    Pause
+} from 'lucide-react';
+import Link from 'next/link';
 
 const SPEAKING_TOPICS = [
     {
@@ -28,7 +51,7 @@ You should say:
 • why you decided to read it
 • what you learned from it
 and explain whether you would recommend it to others.`,
-        prepTime: 60,
+        prepTime: 10, // Shortened for demo/dev, real is 60
         speakTime: 120,
     },
     {
@@ -61,9 +84,6 @@ and explain why this journey was memorable.`,
 
 type RecordingState = 'idle' | 'preparing' | 'recording' | 'finished';
 
-import { api } from '@/lib/api';
-import { SpeakingFeedback } from '@/components/SpeakingFeedback';
-
 export default function SpeakingPage() {
     const { user, token } = useAuth();
     const [selectedTopic, setSelectedTopic] = useState<typeof SPEAKING_TOPICS[0] | null>(null);
@@ -81,21 +101,15 @@ export default function SpeakingPage() {
     const chunksRef = useRef<Blob[]>([]);
 
     const submitForAnalysis = async () => {
-        if (!token || !audioUrl || chunksRef.current.length === 0 && !selectedTopic) return;
-
+        if (!token || !audioUrl || !selectedTopic) return;
         setIsAnalyzing(true);
-        // Re-create blob if needed, but we usually clear chunks on stop.
-        // Better way: store the final blob in state when stopping recording.
-        // For now, let's fetch the blob from the object URL to be safe/simple
         try {
             const audioBlob = await fetch(audioUrl).then(r => r.blob());
             const promptText = selectedTopic?.cueCard || selectedTopic?.questions?.join(" ") || "General Speaking";
-
             const result = await api.analyzeSpeaking(token, audioBlob, promptText);
             setFeedback(result);
         } catch (err) {
             console.error(err);
-            alert("Analysis failed. Please try again.");
         } finally {
             setIsAnalyzing(false);
         }
@@ -110,28 +124,21 @@ export default function SpeakingPage() {
 
     const startPractice = async (topic: typeof SPEAKING_TOPICS[0]) => {
         try {
-            // Request microphone permission early
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorderRef.current = new MediaRecorder(stream);
-
             mediaRecorderRef.current.ondataavailable = (e) => {
                 if (e.data.size > 0) chunksRef.current.push(e.data);
             };
-
             mediaRecorderRef.current.onstop = () => {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
                 const url = URL.createObjectURL(blob);
                 setAudioUrl(url);
-                chunksRef.current = []; // Reset chunks for next time
-
-                // Stop all tracks to release microphone
+                chunksRef.current = [];
                 stream.getTracks().forEach(track => track.stop());
             };
-
             setSelectedTopic(topic);
             setCurrentQuestionIdx(0);
             setPermissionError(false);
-
             if (topic.prepTime) {
                 setRecordingState('preparing');
                 setTimeLeft(topic.prepTime);
@@ -140,30 +147,25 @@ export default function SpeakingPage() {
                 beginRecording(topic);
             }
         } catch (err) {
-            console.error("Microphone permission denied:", err);
             setPermissionError(true);
         }
     };
 
     const beginRecording = (topic: typeof SPEAKING_TOPICS[0]) => {
         if (!mediaRecorderRef.current) return;
-
         setRecordingState('recording');
         setTimeLeft(topic.speakTime || topic.timePerQuestion || 60);
         setIsRecording(true);
-
         mediaRecorderRef.current.start();
         startTimer(topic.speakTime || topic.timePerQuestion || 60, () => nextQuestion(topic));
     };
 
     const startTimer = (seconds: number, onComplete: () => void) => {
         if (timerRef.current) clearInterval(timerRef.current);
-
         let remaining = seconds;
         timerRef.current = setInterval(() => {
             remaining -= 1;
             setTimeLeft(remaining);
-
             if (remaining <= 0) {
                 if (timerRef.current) clearInterval(timerRef.current);
                 onComplete();
@@ -174,8 +176,6 @@ export default function SpeakingPage() {
     const nextQuestion = (topic: typeof SPEAKING_TOPICS[0]) => {
         const questions = topic.questions || [];
         if (currentQuestionIdx < questions.length - 1) {
-            // For Part 1/3, we might want to keep recording continuously or stop/start per question
-            // For simplicity/MVP, let's keep recording continuously but reset timer
             setCurrentQuestionIdx(prev => prev + 1);
             setTimeLeft(topic.timePerQuestion || 30);
             startTimer(topic.timePerQuestion || 30, () => nextQuestion(topic));
@@ -200,6 +200,7 @@ export default function SpeakingPage() {
         setTimeLeft(0);
         setIsRecording(false);
         setAudioUrl(null);
+        setFeedback(null);
         if (timerRef.current) clearInterval(timerRef.current);
     };
 
@@ -212,278 +213,291 @@ export default function SpeakingPage() {
     if (!user) return null;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-rose-900 to-pink-900 text-white">
-            {/* Header */}
-            <header className="sticky top-0 z-50 bg-black/20 backdrop-blur-sm border-b border-white/10">
-                <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <a href="/dashboard" className="text-white/70 hover:text-white">
-                            ← Back
-                        </a>
-                        <h1 className="text-xl font-bold">🎤 Speaking Practice</h1>
+        <div className="pb-24 max-w-5xl mx-auto px-4 md:px-0">
+            {!selectedTopic ? (
+                // Topic Selection View
+                <div className="space-y-10 py-6">
+                    <div className="space-y-2">
+                        <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Speaking Practice</h1>
+                        <p className="text-slate-500 font-medium tracking-tight">Practice IELTS Speaking with real-time AI fluency and pronunciation checks.</p>
                     </div>
-                    {isRecording && (
-                        <div className="flex items-center gap-2">
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {SPEAKING_TOPICS.map((topic, idx) => (
                             <motion.div
-                                animate={{ scale: [1, 1.2, 1] }}
-                                transition={{ repeat: Infinity, duration: 1 }}
-                                className="w-3 h-3 bg-red-500 rounded-full"
-                            />
-                            <span className="text-red-400 font-medium">Recording</span>
-                        </div>
-                    )}
+                                key={topic.id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.1 }}
+                                onClick={() => startPractice(topic)}
+                                className="group card p-8 !rounded-3xl cursor-pointer hover:border-blue-600 transition-all duration-300 shadow-xl shadow-slate-200/40 dark:shadow-none interactive flex flex-col"
+                            >
+                                <div className="flex justify-between items-start mb-6">
+                                    <div className="w-14 h-14 bg-rose-50 dark:bg-rose-900/30 rounded-2xl flex items-center justify-center text-rose-500 group-hover:bg-rose-600 group-hover:text-white transition-colors duration-300 shadow-lg shadow-rose-200/40 dark:shadow-none">
+                                        <Mic className="w-7 h-7" />
+                                    </div>
+                                    <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                        {topic.part}
+                                    </span>
+                                </div>
+                                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">
+                                    {topic.title}
+                                </h3>
+                                <div className="space-y-4">
+                                    <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed font-medium">
+                                        {topic.cueCard ? 'Complete cue card response with 1-min preparation.' : `Answer ${topic.questions?.length} structured questions in real-time.`}
+                                    </p>
+                                    <div className="flex items-center gap-4 pt-6 mt-4 border-t border-slate-100 dark:border-slate-800">
+                                        {topic.prepTime && (
+                                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
+                                                <History className="w-3.5 h-3.5" />
+                                                {topic.prepTime}s Prep
+                                            </div>
+                                        )}
+                                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
+                                            <Clock className="w-3.5 h-3.5" />
+                                            {topic.speakTime || topic.timePerQuestion}s Limit
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
                 </div>
-            </header>
-
-            <main className="max-w-4xl mx-auto px-4 py-8">
-                {permissionError && (
-                    <div className="mb-6 bg-red-500/20 border border-red-500/50 p-4 rounded-xl text-center">
-                        <h3 className="text-red-300 font-bold mb-2">Microphone Access Required</h3>
-                        <p className="text-white/70">Please allow microphone access to practice speaking.</p>
-                        <button
-                            onClick={() => setPermissionError(false)}
-                            className="mt-3 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg transition"
-                        >
-                            Dismiss
+            ) : recordingState === 'finished' ? (
+                // Feedback & Review View
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center gap-4">
+                        <button onClick={resetPractice} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-slate-500">
+                            <ArrowLeft className="w-5 h-5" />
                         </button>
+                        <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Speaking Analysis</h2>
                     </div>
-                )}
 
-                {!selectedTopic ? (
-                    // Topic Selection
-                    <div>
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="text-center mb-8"
-                        >
-                            <h2 className="text-3xl font-bold mb-4">Choose a Speaking Topic</h2>
-                            <p className="text-white/70">Practice IELTS Speaking with real audio recording</p>
-                        </motion.div>
-
-                        <div className="grid gap-6">
-                            {SPEAKING_TOPICS.map((topic, idx) => (
-                                <motion.div
-                                    key={topic.id}
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: idx * 0.1 }}
-                                    className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/15 transition cursor-pointer"
-                                    onClick={() => startPractice(topic)}
-                                >
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <span className="bg-rose-500/30 text-rose-300 px-3 py-1 rounded-full text-sm">
-                                                {topic.part}
-                                            </span>
-                                            <h3 className="text-xl font-bold mt-2">{topic.title}</h3>
-                                        </div>
-                                        <div className="text-right text-white/60 text-sm">
-                                            {topic.prepTime && <div>{topic.prepTime}s prep</div>}
-                                            <div>{topic.speakTime || topic.timePerQuestion}s per {topic.questions ? 'question' : 'response'}</div>
-                                        </div>
-                                    </div>
-                                    {topic.questions && (
-                                        <p className="text-white/70 text-sm">{topic.questions.length} questions</p>
-                                    )}
-                                    {topic.cueCard && (
-                                        <p className="text-white/70 text-sm line-clamp-2">{topic.cueCard.split('\n')[0]}</p>
-                                    )}
-                                </motion.div>
-                            ))}
-                        </div>
-
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: 0.4 }}
-                            className="mt-8 bg-amber-500/20 border border-amber-500/50 rounded-xl p-4"
-                        >
-                            <h4 className="font-bold text-amber-300 mb-2">🚧 Coming Soon</h4>
-                            <p className="text-white/70 text-sm">
-                                AI feedback for speaking (pronunciation & fluency) is under development!
-                            </p>
-                        </motion.div>
-                    </div>
-                ) : recordingState === 'finished' ? (
-                    // Finished Screen
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 text-center"
-                    >
-                        {isAnalyzing ? (
-                            <div className="py-8">
-                                <motion.div
-                                    animate={{ rotate: 360 }}
-                                    transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                                    className="w-16 h-16 border-4 border-rose-400 border-t-transparent rounded-full mb-6 mx-auto"
-                                />
-                                <h3 className="text-2xl font-bold animate-pulse">Analysing Speech...</h3>
-                                <p className="text-white/60 mt-2">Gemini AI is listening to your recording...</p>
+                    {isAnalyzing ? (
+                        <div className="card !rounded-3xl p-16 flex flex-col items-center justify-center space-y-6 text-center shadow-xl shadow-slate-200/40">
+                            <div className="relative">
+                                <div className="w-24 h-24 border-4 border-rose-100 dark:border-slate-800 rounded-full" />
+                                <div className="w-24 h-24 border-4 border-rose-500 border-t-transparent rounded-full animate-spin absolute top-0" />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <Volume2 className="w-10 h-10 text-rose-500 animate-pulse" />
+                                </div>
                             </div>
-                        ) : feedback ? (
-                            <div className="space-y-6">
-                                <div className="space-y-6">
-                                    <div className="bg-white/10 rounded-xl p-6 relative overflow-hidden">
-                                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-rose-500 to-pink-500" />
-                                        <div className="text-sm uppercase tracking-widest text-white/60 mb-2">Estimated Band Score</div>
-                                        <div className="text-6xl font-bold text-rose-400 mb-2">{feedback.band_score}</div>
-                                        <p className="text-white/90">{feedback.overall_feedback}</p>
+                            <div className="space-y-2">
+                                <h3 className="text-2xl font-black text-slate-900 dark:text-white">Analyzing your voice...</h3>
+                                <p className="text-slate-500 font-medium max-w-xs mx-auto tracking-tight">Our AI is processing fluency, pronunciation, and lexical range.</p>
+                            </div>
+                        </div>
+                    ) : feedback ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            {/* Score & Audio Sidebar */}
+                            <div className="lg:col-span-1 space-y-6">
+                                <div className="card p-8 !rounded-[2.5rem] shadow-xl shadow-slate-200/40 dark:shadow-none border-t-4 border-t-rose-500">
+                                    <div className="text-center space-y-2 mb-8">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Estimated Band</span>
+                                        <div className="text-8xl font-black text-rose-500 tracking-tighter">
+                                            {feedback.band_score}
+                                        </div>
                                     </div>
 
-                                    {/* Transcription & Errors */}
-                                    {feedback.transcription && (
-                                        <SpeakingFeedback
-                                            transcription={feedback.transcription}
-                                            errors={feedback.annotated_errors || []}
-                                        />
+                                    {audioUrl && (
+                                        <div className="bg-slate-50 dark:bg-slate-800/80 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 mb-8">
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <Volume2 className="w-4 h-4 text-slate-400" />
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Playback Recording</span>
+                                            </div>
+                                            <audio src={audioUrl} controls className="w-full h-10 brightness-95 rounded-xl" />
+                                        </div>
                                     )}
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                                    <div className="space-y-4">
                                         {[
-                                            { name: "Fluency", data: feedback.fluency_coherence },
-                                            { name: "Vocabulary", data: feedback.lexical_resource },
-                                            { name: "Grammar", data: feedback.grammatical_range },
-                                            { name: "Pronunciation", data: feedback.pronunciation }
-                                        ].map(criterion => (
-                                            <div key={criterion.name} className="bg-white/5 p-4 rounded-xl">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <span className="font-medium text-white/80">{criterion.name}</span>
-                                                    <span className="font-bold text-rose-400">{criterion.data?.score || '-'}</span>
-                                                </div>
-                                                <p className="text-xs text-white/50">{criterion.data?.comment || 'No comment'}</p>
+                                            { label: 'Fluency', score: feedback.fluency_coherence.score },
+                                            { label: 'Pronunciation', score: feedback.pronunciation.score },
+                                            { label: 'Vocabulary', score: feedback.lexical_resource.score },
+                                            { label: 'Grammar', score: feedback.grammatical_range.score },
+                                        ].map((item) => (
+                                            <div key={item.label} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+                                                <span className="text-xs font-bold text-slate-500 uppercase">{item.label}</span>
+                                                <span className="font-black text-slate-900 dark:text-white">{item.score}</span>
                                             </div>
                                         ))}
                                     </div>
-
-                                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-left">
-                                        <h4 className="font-bold text-emerald-400 mb-2">💡 Top Improvements</h4>
-                                        <ul className="list-disc list-inside text-sm text-white/80 space-y-1">
-                                            {feedback.improvements?.map((imp: string, i: number) => (
-                                                <li key={i}>{imp}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-
-                                    <div className="flex gap-4 pt-2">
-                                        <button
-                                            onClick={resetPractice}
-                                            className="flex-1 py-3 bg-white/10 rounded-xl font-medium hover:bg-white/20 transition"
-                                        >
-                                            Try New Topic
-                                        </button>
-                                        <a
-                                            href="/dashboard"
-                                            className="flex-1 py-3 bg-gradient-to-r from-rose-500 to-pink-500 rounded-xl font-bold text-center hover:from-rose-400 hover:to-pink-400 transition"
-                                        >
-                                            Dashboard
-                                        </a>
-                                    </div>
-                                </div>
-                                ) : (
-                                <>
-                                    <div className="text-6xl mb-4">🎉</div>
-                                    <h2 className="text-2xl font-bold mb-2">Great Practice!</h2>
-                                    <p className="text-white/70 mb-6">You completed the {selectedTopic.title} topic</p>
-
-                                    <div className="bg-white/10 rounded-xl p-6 mb-8 max-w-md mx-auto">
-                                        <h4 className="font-medium mb-4">Listen to your recording</h4>
-                                        {audioUrl && (
-                                            <div className="flex justify-center">
-                                                <audio controls src={audioUrl} className="w-full" />
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <button
-                                        onClick={submitForAnalysis}
-                                        className="w-full py-4 bg-gradient-to-r from-violet-600 to-purple-600 rounded-xl font-bold text-xl mb-4 hover:shadow-lg hover:shadow-purple-500/20 transition transform hover:scale-[1.02] flex items-center justify-center gap-2"
-                                    >
-                                        <span>✨</span> Analyze with AI Examiner
-                                    </button>
-
-                                    <div className="flex gap-4">
-                                        <button
-                                            onClick={resetPractice}
-                                            className="flex-1 py-3 bg-white/10 rounded-xl font-medium hover:bg-white/20 transition"
-                                        >
-                                            Try Another Topic
-                                        </button>
-                                        <a
-                                            href="/dashboard"
-                                            className="flex-1 py-3 bg-white/10 rounded-xl font-medium text-center hover:bg-white/20 transition"
-                                        >
-                                            Dashboard
-                                        </a>
-                                    </div>
-                                </>
-                        )}
-                            </motion.div>
-                        ) : (
-                            // Recording Interface
-                            <div>
-                                {/* Timer */}
-                                <motion.div
-                                    initial={{ scale: 0.8, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    className="text-center mb-8"
-                                >
-                                    <div className={`text-7xl font-mono font-bold ${timeLeft <= 10 ? 'text-red-400' : 'text-white'}`}>
-                                        {formatTime(timeLeft)}
-                                    </div>
-                                    <div className="text-white/60 mt-2">
-                                        {recordingState === 'preparing' ? 'Preparation Time' : 'Recording... Speak now!'}
-                                    </div>
-                                </motion.div>
-
-                                {/* Content Card */}
-                                <motion.div
-                                    initial={{ y: 20, opacity: 0 }}
-                                    animate={{ y: 0, opacity: 1 }}
-                                    className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 mb-6"
-                                >
-                                    <div className="flex justify-between items-start mb-4">
-                                        <span className="bg-rose-500/30 text-rose-300 px-3 py-1 rounded-full text-sm">
-                                            {selectedTopic.part}
-                                        </span>
-                                        {selectedTopic.questions && (
-                                            <span className="text-white/60 text-sm">
-                                                Question {currentQuestionIdx + 1} of {selectedTopic.questions.length}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {selectedTopic.cueCard ? (
-                                        <div className="whitespace-pre-line text-white/90 text-left text-lg leading-relaxed">{selectedTopic.cueCard}</div>
-                                    ) : selectedTopic.questions ? (
-                                        <div className="text-2xl font-medium text-center py-8">{selectedTopic.questions[currentQuestionIdx]}</div>
-                                    ) : null}
-                                </motion.div>
-
-                                {/* Stop Button */}
-                                <div className="flex justify-center mt-8 gap-4">
-                                    {recordingState === 'preparing' && (
-                                        <button
-                                            onClick={() => beginRecording(selectedTopic!)}
-                                            className="px-8 py-3 bg-rose-600 hover:bg-rose-500 rounded-xl font-bold transition shadow-lg shadow-rose-500/20"
-                                        >
-                                            Start Speaking Now
-                                        </button>
-                                    )}
-
-                                    {recordingState === 'recording' && (
-                                        <button
-                                            onClick={finishRecording}
-                                            className="px-8 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-medium transition"
-                                        >
-                                            Finish Early
-                                        </button>
-                                    )}
                                 </div>
                             </div>
-                        )}
-                    </main>
+
+                            {/* Detailed Analysis */}
+                            <div className="lg:col-span-2 space-y-8">
+                                <div className="card p-10 !rounded-[2.5rem] shadow-xl shadow-slate-200/50 dark:shadow-none space-y-10">
+                                    <div className="space-y-6">
+                                        <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white flex items-center gap-2">
+                                            <Sparkles className="w-5 h-5 text-rose-500" />
+                                            Examiner Review
+                                        </h4>
+                                        <p className="text-lg text-slate-600 dark:text-slate-300 font-medium leading-relaxed italic border-l-4 border-rose-100 dark:border-rose-900/40 pl-6 py-2">
+                                            &quot;{feedback.overall_feedback}&quot;
+                                        </p>
+                                    </div>
+
+                                    {feedback.transcription && (
+                                        <div className="space-y-4">
+                                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Transcribed Response</h4>
+                                            <SpeakingFeedback
+                                                transcription={feedback.transcription}
+                                                errors={feedback.annotated_errors || []}
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-6">
+                                        <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white flex items-center gap-2">
+                                            <TrendingUp className="w-5 h-5 text-emerald-500" />
+                                            Actionable Insights
+                                        </h4>
+                                        <div className="grid gap-3">
+                                            {feedback.improvements?.map((imp: string, i: number) => (
+                                                <div key={i} className="flex gap-4 p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                                                    <div className="w-6 h-6 bg-emerald-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center flex-shrink-0 text-emerald-600 font-black text-xs">
+                                                        {i + 1}
+                                                    </div>
+                                                    <p className="text-sm text-slate-600 dark:text-slate-400 font-medium tracking-tight">
+                                                        {imp}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4">
+                                    <button onClick={resetPractice} className="flex-1 btn-primary py-5 !rounded-2xl font-black text-lg flex items-center justify-center gap-2 shadow-xl shadow-blue-600/20 active:scale-95">
+                                        Another Topic
+                                        <ChevronRight className="w-6 h-6" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="card !rounded-3xl p-16 text-center space-y-10 shadow-xl shadow-slate-200/40 border-t-8 border-t-rose-500 max-w-2xl mx-auto">
+                            <div className="space-y-4">
+                                <div className="w-20 h-20 bg-rose-50 dark:bg-rose-900/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <CheckCircle2 className="w-10 h-10" />
+                                </div>
+                                <h3 className="text-2xl font-black text-slate-900 dark:text-white">Recording Captured!</h3>
+                                <p className="text-slate-500 font-medium">You completed the {selectedTopic.part} and recorded your response.</p>
+
+                                <div className="bg-slate-50 dark:bg-slate-800/80 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 max-w-sm mx-auto">
+                                    <audio src={audioUrl || ''} controls className="w-full" />
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={submitForAnalysis}
+                                className="w-full py-5 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-xl hover:opacity-95 transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-95 group"
+                            >
+                                <Sparkles className="w-6 h-6 text-blue-400 group-hover:rotate-12 transition-transform" />
+                                Start AI Evaluation
+                            </button>
+
+                            <button onClick={resetPractice} className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] hover:text-rose-500 transition-colors">
+                                Discard & Retake
+                            </button>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                // Focused Recording Workflow
+                <div className="max-w-4xl mx-auto py-10 space-y-12 animate-in fade-in zoom-in-95 duration-500">
+                    <div className="text-center space-y-4">
+                        <div className={`text-[10rem] font-black leading-none tracking-tighter ${timeLeft <= 10 && recordingState === 'recording' ? 'text-rose-500 animate-pulse' : 'text-slate-900 dark:text-white'}`}>
+                            {formatTime(timeLeft)}
+                        </div>
+                        <div className="flex items-center justify-center gap-3">
+                            <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-2 ${recordingState === 'preparing'
+                                    ? 'bg-amber-100 text-amber-600'
+                                    : 'bg-rose-100 text-rose-600 animate-pulse'
+                                }`}>
+                                <div className={`w-2 h-2 rounded-full ${recordingState === 'preparing' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+                                {recordingState === 'preparing' ? 'Focus & Prepare' : 'Speak Loudly'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="card p-12 !rounded-[3.5rem] shadow-2xl shadow-slate-200/60 dark:shadow-none border-t-8 border-t-blue-600 bg-white dark:bg-slate-900 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
+                            <Mic className="w-64 h-64" />
+                        </div>
+
+                        <div className="relative space-y-10">
+                            <div className="flex items-center justify-between">
+                                <span className="px-4 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                    {selectedTopic.part}
+                                </span>
+                                {selectedTopic.questions && (
+                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                                        Question {currentQuestionIdx + 1} / {selectedTopic.questions.length}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="min-h-[200px] flex items-center justify-center text-center">
+                                {selectedTopic.cueCard ? (
+                                    <p className="text-2xl font-bold text-slate-900 dark:text-white leading-[1.6] whitespace-pre-line text-left py-6">
+                                        {selectedTopic.cueCard}
+                                    </p>
+                                ) : (
+                                    <h2 className="text-4xl font-black text-slate-900 dark:text-white leading-tight">
+                                        {selectedTopic.questions?.[currentQuestionIdx]}
+                                    </h2>
+                                )}
+                            </div>
+
+                            <div className="flex justify-center gap-6 pt-10">
+                                {recordingState === 'preparing' ? (
+                                    <button
+                                        onClick={() => beginRecording(selectedTopic)}
+                                        className="btn-primary py-5 px-12 !rounded-2xl font-black text-lg flex items-center gap-3 shadow-blue-600/30"
+                                    >
+                                        <Mic className="w-6 h-6" />
+                                        Start Speaking Now
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={finishRecording}
+                                        className="py-5 px-12 rounded-2xl bg-rose-600 text-white font-black text-lg flex items-center gap-3 shadow-xl shadow-rose-600/30 hover:bg-rose-700 active:scale-95 transition-all"
+                                    >
+                                        <StopCircle className="w-6 h-6" />
+                                        Finish Recording
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {recordingState === 'preparing' && (
+                        <div className="flex items-center justify-center gap-3 text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px]">
+                            <Info className="w-4 h-4" />
+                            Note: Your mic will activate automatically when timer reaches zero.
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {permissionError && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+                    <div className="card max-w-md w-full p-10 text-center space-y-6 !rounded-3xl border-rose-100">
+                        <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto">
+                            <MicOff className="w-10 h-10" />
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="text-2xl font-black text-slate-900">Microphone Required</h3>
+                            <p className="text-slate-500 font-medium">We need access to your microphone to analyze your speech. Please enable it in browser settings.</p>
+                        </div>
+                        <button onClick={() => setPermissionError(false)} className="btn-primary w-full">Got it</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+

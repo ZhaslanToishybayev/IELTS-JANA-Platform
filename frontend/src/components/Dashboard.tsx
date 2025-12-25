@@ -10,6 +10,22 @@ import {
     StreakDisplay,
     BandScoreDisplay,
 } from './Gamification';
+import {
+    BookOpen,
+    Headphones,
+    PenTool,
+    Mic2,
+    Zap,
+    Trophy,
+    BarChart3,
+    Clock,
+    Target,
+    Sparkles,
+    ArrowRight,
+    TrendingUp,
+    LayoutDashboard
+} from 'lucide-react';
+import Link from 'next/link';
 
 interface DashboardData {
     username: string;
@@ -33,7 +49,7 @@ interface DashboardData {
 }
 
 export function Dashboard() {
-    const { token, user, logout } = useAuth();
+    const { token, user } = useAuth();
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -48,19 +64,13 @@ export function Dashboard() {
 
     if (loading || !data) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center">
-                <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                    className="w-16 h-16 border-4 border-purple-400 border-t-transparent rounded-full"
-                />
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
             </div>
         );
     }
 
     const xpProgress = ((data.xp % 100) / (data.xp_to_next_level || 100)) * 100;
-    const totalXpForLevel = data.xp_to_next_level;
-    const currentLevelXp = data.xp % totalXpForLevel;
 
     const skillsByCategory = data.skills.reduce((acc, skill) => {
         if (!acc[skill.category]) acc[skill.category] = [];
@@ -81,201 +91,211 @@ export function Dashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white">
-            {/* Header */}
-            <header className="sticky top-0 z-50 bg-black/20 backdrop-blur-sm border-b border-white/10">
-                <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-                            JANA
-                        </h1>
-                        <span className="text-white/50">|</span>
-                        <span className="text-white/70">Welcome, {data.username}!</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        {data.current_streak > 0 && <StreakDisplay streak={data.current_streak} />}
-                        <button
-                            onClick={logout}
-                            className="text-white/60 hover:text-white transition text-sm"
-                        >
-                            Sign Out
-                        </button>
-                    </div>
-                </div>
-            </header>
-
-            <main className="max-w-6xl mx-auto px-4 py-8">
-                {/* Stats row */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    {/* Level & XP */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 flex items-center gap-6"
-                    >
-                        <ProgressRing progress={xpProgress} size={100}>
-                            <div className="text-center">
-                                <div className="text-2xl font-bold">{data.level}</div>
-                                <div className="text-xs text-white/60">Level</div>
-                            </div>
-                        </ProgressRing>
-                        <div>
-                            <div className="text-3xl font-bold">{data.xp} XP</div>
-                            <div className="text-white/60 text-sm">
-                                {data.xp_to_next_level} XP to Level {data.level + 1}
-                            </div>
-                            <div className="h-2 bg-white/20 rounded-full mt-2 w-32 overflow-hidden">
-                                <motion.div
-                                    className="h-full bg-gradient-to-r from-cyan-400 to-purple-500"
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${xpProgress}%` }}
-                                />
-                            </div>
-                        </div>
-                    </motion.div>
-
-                    {/* Band Score */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                    >
-                        <BandScoreDisplay band={data.estimated_band} />
-                    </motion.div>
-
-                    {/* Stats */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
-                    >
-                        <h3 className="text-lg font-semibold mb-4">Your Stats</h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <div className="text-2xl font-bold">{data.total_attempts}</div>
-                                <div className="text-white/60 text-sm">Questions</div>
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold">{(data.overall_accuracy * 100).toFixed(0)}%</div>
-                                <div className="text-white/60 text-sm">Accuracy</div>
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold">{(data.avg_response_time_ms / 1000).toFixed(1)}s</div>
-                                <div className="text-white/60 text-sm">Avg. Time</div>
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold">{data.current_streak}</div>
-                                <div className="text-white/60 text-sm">Day Streak</div>
-                            </div>
-                        </div>
-                    </motion.div>
-                </div>
-
-                {/* Practice CTAs */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="mb-6 space-y-4"
-                >
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <a href="/practice" className="block bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 text-white text-center py-5 rounded-2xl font-bold text-lg transition-all transform hover:scale-[1.02]">
-                            📖 Reading
-                        </a>
-                        <a href="/listening" className="block bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white text-center py-5 rounded-2xl font-bold text-lg transition-all transform hover:scale-[1.02]">
-                            🎧 Listening
-                        </a>
-                        <a href="/writing" className="block bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white text-center py-5 rounded-2xl font-bold text-lg transition-all transform hover:scale-[1.02]">
-                            ✍️ Writing
-                        </a>
-                        <a href="/speaking" className="block bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-400 hover:to-pink-400 text-white text-center py-5 rounded-2xl font-bold text-lg transition-all transform hover:scale-[1.02]">
-                            🎤 Speaking
-                        </a>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <a href="/generate" className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 py-4 rounded-xl font-bold shadow-lg transition transform hover:scale-[1.02]">
-                            <span>🪄</span> Infinite Generator
-                        </a>
-                        <a href="/mock" className="flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 py-4 rounded-xl font-bold shadow-lg transition transform hover:scale-[1.02]">
-                            <span>⏱️</span> Mock Exam
-                        </a>
-                        <a href="/leaderboard" className="flex items-center justify-center gap-2 bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-500 hover:to-amber-500 py-4 rounded-xl font-bold shadow-lg transition transform hover:scale-[1.02]">
-                            <span>🏆</span> Leaderboard
-                        </a>
-                    </div>
-                </motion.div>
-
-                {/* Quick Links */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.35 }}
-                    className="mb-8 flex flex-wrap gap-3"
-                >
-                    <a
-                        href="/progress"
-                        className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl transition"
-                    >
-                        📊 View Progress Charts
-                    </a>
-                    <a
-                        href="/skills"
-                        className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl transition"
-                    >
-                        🌳 Skill Tree
-                    </a>
-                </motion.div>
-
-                {/* Skills breakdown */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 }}
-                >
-                    <h2 className="text-xl font-bold mb-4">Skill Mastery</h2>
-
-                    <div className="space-y-6">
-                        {Object.entries(skillsByCategory).map(([category, skills]) => (
-                            <div key={category}>
-                                <h3 className="text-white/80 font-medium mb-3">
-                                    {categoryLabels[category] || category}
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {skills.map((skill) => (
-                                        <MasteryBar
-                                            key={skill.skill_id}
-                                            skillName={skill.skill_name}
-                                            mastery={skill.mastery_probability}
-                                            category={skill.category}
-                                            isUnlocked={skill.is_unlocked}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </motion.div>
-
-                {/* Quick tips */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5 }}
-                    className="mt-8 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl p-6"
-                >
-                    <h3 className="font-bold text-lg mb-2">💡 Pro Tip</h3>
-                    <p className="text-white/80">
-                        {data.skills.length > 0
-                            ? `Focus on improving your ${data.skills.reduce((a, b) =>
-                                a.mastery_probability < b.mastery_probability ? a : b
-                            ).skill_name
-                            } skill - it&apos;s your current weak point!`
-                            : 'Complete more practice questions to see personalized recommendations.'}
+        <div className="py-6 space-y-8">
+            {/* Page Title */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                        Welcome back, {data.username}!
+                    </h1>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium">
+                        You&apos;re making great progress. Ready for today&apos;s session?
                     </p>
-                </motion.div>
-            </main>
+                </div>
+                {data.current_streak > 0 && <StreakDisplay streak={data.current_streak} />}
+            </div>
+
+            {/* Overview Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Level Card */}
+                <div className="card p-6 flex items-center gap-8 lg:col-span-1">
+                    <ProgressRing progress={xpProgress} size={110} strokeWidth={8}>
+                        <div className="text-center">
+                            <div className="text-3xl font-black text-blue-600">{data.level}</div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Level</div>
+                        </div>
+                    </ProgressRing>
+                    <div className="flex-1">
+                        <div className="text-3xl font-black text-slate-900 dark:text-white mb-1">
+                            {data.xp} <span className="text-lg font-medium text-slate-400">XP</span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">
+                            {data.xp_to_next_level - (data.xp % 100)} XP to Next Level
+                        </p>
+                        <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full w-full overflow-hidden">
+                            <motion.div
+                                className="h-full bg-blue-600"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${xpProgress}%` }}
+                                transition={{ duration: 1, ease: 'easeOut' }}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Performance Stats */}
+                <div className="card p-6 lg:col-span-1">
+                    <div className="flex items-center gap-2 mb-6">
+                        <BarChart3 className="w-5 h-5 text-blue-600" />
+                        <h3 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-xs">Performance</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-1">
+                            <div className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                                {data.total_attempts}
+                                <BookOpen className="w-4 h-4 text-slate-300" />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Questions</p>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                                {(data.overall_accuracy * 100).toFixed(0)}%
+                                <Target className="w-4 h-4 text-slate-300" />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Accuracy</p>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                                {(data.avg_response_time_ms / 1000).toFixed(1)}s
+                                <Clock className="w-4 h-4 text-slate-300" />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Avg. Time</p>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                                Lvl.{data.level}
+                                <Trophy className="w-4 h-4 text-slate-300" />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Rank</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Band Score Card */}
+                <div className="lg:col-span-1">
+                    <BandScoreDisplay band={data.estimated_band} />
+                </div>
+            </div>
+
+            {/* Main Action Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                {[
+                    { label: 'Reading', href: '/practice', color: 'bg-blue-600', icon: BookOpen },
+                    { label: 'Listening', href: '/listening', color: 'bg-indigo-600', icon: Headphones },
+                    { label: 'Writing', href: '/writing', color: 'bg-slate-800', icon: PenTool },
+                    { label: 'Speaking', href: '/speaking', color: 'bg-slate-700', icon: Mic2 },
+                ].map((action) => (
+                    <Link
+                        key={action.label}
+                        href={action.href}
+                        className="group relative overflow-hidden card p-6 hover:border-blue-500 transition-all duration-300"
+                    >
+                        <div className="relative z-10 flex flex-col justify-between h-full min-h-[100px]">
+                            <div className={`w-12 h-12 ${action.color} rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-110 transition-transform duration-300`}>
+                                <action.icon className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">
+                                    {action.label}
+                                </h3>
+                                <p className="text-xs font-medium text-slate-500 flex items-center gap-1 mt-1">
+                                    Start Practice <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+                                </p>
+                            </div>
+                        </div>
+                    </Link>
+                ))}
+            </div>
+
+            {/* AI Recommendations & Tools */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="md:col-span-2 space-y-6">
+                    {/* Mastery Breakdown */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                <Target className="w-5 h-5 text-blue-600" />
+                                Skill Mastery Breakdown
+                            </h2>
+                            <Link href="/skills" className="text-xs font-bold text-blue-600 hover:underline uppercase tracking-widest">
+                                View Skill Tree
+                            </Link>
+                        </div>
+
+                        <div className="space-y-6">
+                            {Object.entries(skillsByCategory).map(([category, skills]) => (
+                                <div key={category} className="space-y-3">
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 pl-1">
+                                        {categoryLabels[category] || category}
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {skills.map((skill) => (
+                                            <MasteryBar
+                                                key={skill.skill_id}
+                                                skillName={skill.skill_name}
+                                                mastery={skill.mastery_probability}
+                                                category={skill.category}
+                                                isUnlocked={skill.is_unlocked}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-6">
+                    {/* Pro Tip Card */}
+                    <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/50 rounded-2xl p-6 relative overflow-hidden">
+                        <Sparkles className="w-8 h-8 text-blue-600/20 absolute -top-1 -right-1" />
+                        <h3 className="font-bold text-blue-900 dark:text-blue-300 mb-3 flex items-center gap-2">
+                            <Zap className="w-4 h-4" />
+                            AI Recommendation
+                        </h3>
+                        <p className="text-sm text-blue-800/80 dark:text-blue-400/80 leading-relaxed font-medium">
+                            {data.skills.length > 0
+                                ? `Focus on your ${data.skills.reduce((a, b) =>
+                                    a.mastery_probability < b.mastery_probability ? a : b
+                                ).skill_name
+                                } - improving your weak points is the fastest way to hit Band 8.0!`
+                                : 'Complete 5 more questions to unlock personalized AI strategy recommendations.'}
+                        </p>
+                    </div>
+
+                    {/* Secondary Actions */}
+                    <div className="space-y-3">
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 pl-1">Powerful Tools</h3>
+                        <Link href="/generate" className="flex items-center justify-between w-full card p-4 hover:border-blue-300 transition-colors group">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-600">
+                                    <Sparkles className="w-4 h-4" />
+                                </div>
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 tracking-tight">Infinite Prep Generator</span>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:translate-x-1 transition-transform" />
+                        </Link>
+                        <Link href="/mock" className="flex items-center justify-between w-full card p-4 hover:border-orange-300 transition-colors group">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-orange-50 dark:bg-orange-900/30 rounded-lg text-orange-600">
+                                    <Clock className="w-4 h-4" />
+                                </div>
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 tracking-tight">Full Mock Exam</span>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:translate-x-1 transition-transform" />
+                        </Link>
+                        <Link href="/leaderboard" className="flex items-center justify-between w-full card p-4 hover:border-yellow-300 transition-colors group">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg text-yellow-600">
+                                    <Trophy className="w-4 h-4" />
+                                </div>
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 tracking-tight">Global Leaderboard</span>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:translate-x-1 transition-transform" />
+                        </Link>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

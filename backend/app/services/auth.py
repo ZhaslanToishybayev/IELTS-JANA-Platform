@@ -1,17 +1,22 @@
 """Authentication service with JWT token handling."""
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 
 from ..models import User
 from ..schemas import UserCreate, Token
 from ..config import get_settings
+from ..database import get_db
+from ..utils.password_validator import validate_password
 
 settings = get_settings()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -28,7 +33,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """Create a JWT access token."""
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=settings.access_token_expire_minutes))
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access"})
+    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+
+
+def create_refresh_token(data: dict) -> str:
+    """Create a JWT refresh token (longer expiry)."""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=30)  # 30 days for refresh token
+    to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
@@ -36,14 +49,39 @@ def decode_token(token: str) -> Optional[int]:
     """Decode JWT token and return user_id."""
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id: int = payload.get("sub")
+        user_id = payload.get("sub")
         return int(user_id) if user_id else None
     except JWTError:
         return None
 
 
+def decode_refresh_token(token: str) -> Optional[int]:
+    """Decode refresh token and return user_id if valid."""
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        if payload.get("type") != "refresh":
+            return None
+        user_id = payload.get("sub")
+        return int(user_id) if user_id else None
+    except JWTError:
+        return None
+
+
+def validate_user_password(password: str) -> Tuple[bool, str]:
+    """Validate password meets security requirements."""
+    return validate_password(password)
+
+
 def create_user(db: Session, user_data: UserCreate) -> User:
-    """Create a new user."""
+    """Create a new user with password validation."""
+    # Validate password
+    is_valid, error_msg = validate_password(user_data.password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
+    
     hashed_password = get_password_hash(user_data.password)
     user = User(
         email=user_data.email,
@@ -73,12 +111,6 @@ def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
     """Get user by ID."""
     return db.query(User).filter(User.id == user_id).first()
 
-
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from ..database import get_db
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     """Dependency to get current authenticated user."""
