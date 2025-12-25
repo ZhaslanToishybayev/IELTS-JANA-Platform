@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+    container_name: jana-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/jana.db:/app/jana.db # Persist SQLite
+    environment:
+      - DATABASE_URL=sqlite:///./jana.db
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SECRET_KEY=${SECRET_KEY:-unsafe_secret_key_for_dev}
+      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: jana-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api # Browser-side access
+    depends_on:
+      - backend
+    restart: unless-stopped
