@@ -42,7 +42,8 @@ app.add_middleware(
 # Setup rate limiting
 setup_rate_limiter(app)
 
-# Create database tables
+# Keep local startup forgiving, but use Alembic for intentional schema changes:
+#   cd backend && alembic upgrade head
 Base.metadata.create_all(bind=engine)
 
 # Include routers

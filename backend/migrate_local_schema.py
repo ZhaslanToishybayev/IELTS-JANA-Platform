@@ -1,4 +1,13 @@
-"""Best-effort local SQLite schema upgrade for the JANA development database."""
+"""Legacy local SQLite schema helper.
+
+Alembic is now the preferred schema management path:
+
+    alembic upgrade head
+
+Keep this script only as a best-effort fallback for old local databases when a
+developer cannot run Alembic yet. Do not add new schema changes here unless
+there is a specific local recovery need.
+"""
 
 import sys
 

@@ -1,1 +1,10 @@
-Generic single-database configuration.
+Alembic migrations for the IELTS JANA backend.
+
+Run from backend/:
+
+    alembic upgrade head
+
+The migration environment imports app.database.Base and app.models so
+autogenerate can compare against the SQLAlchemy model metadata. The app still
+keeps Base.metadata.create_all() at startup for local convenience, but Alembic is
+the preferred schema management path.
