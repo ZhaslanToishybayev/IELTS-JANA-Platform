@@ -183,6 +183,9 @@ export default function DiagnosticPage() {
                             </div>
                         </div>
                     </div>
+                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                        This is an estimated Reading profile based on your first/current Reading attempts, not an official IELTS score.
+                    </p>
 
                     <div className="space-y-3">
                         <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
