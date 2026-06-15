@@ -11,7 +11,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=1)
 
 
 class UserLogin(BaseModel):
@@ -99,6 +99,9 @@ class QuestionCreate(QuestionBase):
 class QuestionResponse(QuestionBase):
     id: int
     skill_id: int
+    audio_url: Optional[str] = None
+    audio_duration_sec: Optional[int] = None
+    transcript_available: bool = False
     
     class Config:
         from_attributes = True
@@ -169,6 +172,10 @@ class DashboardResponse(BaseModel):
     
     # Skills breakdown
     skills: List[SkillProgress]
+    section_bands: Dict[str, float] = {}
+    weak_question_types: List[Dict[str, Any]] = []
+    mistake_log: List[Dict[str, Any]] = []
+    next_recommended_session: Optional[Dict[str, Any]] = None
 
 
 class ProgressHistoryItem(BaseModel):
@@ -177,6 +184,36 @@ class ProgressHistoryItem(BaseModel):
     accuracy_rate: float
     attempts_count: int
     xp_earned: int
+
+
+# ============== Today's Plan Schemas ==============
+
+class TodayPlanFocusSkill(BaseModel):
+    skill_id: int
+    skill_name: str
+    category: str
+    mastery_probability: float
+
+
+class TodayPlanTask(BaseModel):
+    type: str
+    label: str
+    target: int
+    href: str
+
+
+class TodayPlanReward(BaseModel):
+    xp: int
+    streak: bool
+
+
+class TodayPlanResponse(BaseModel):
+    title: str
+    estimated_minutes: int
+    focus_skill: Optional[TodayPlanFocusSkill] = None
+    tasks: List[TodayPlanTask]
+    reason: str
+    reward: TodayPlanReward
 
 
 # ============== Skill Tree Schemas ==============
@@ -236,7 +273,7 @@ class MockSessionCreate(BaseModel):
     pass # No fields needed to start, user_id from auth
 
 class MockSectionUpdate(BaseModel):
-    section: str # LISTENING, READING, WRITING
+    section: str # LISTENING, READING, WRITING, SPEAKING
     answers: Dict[str, Any] # { "q_1": "answer", ... }
 
 class MockSessionResponse(BaseModel):
@@ -244,7 +281,7 @@ class MockSessionResponse(BaseModel):
     status: str
     current_section: str
     start_time: datetime
-    scores: Optional[Dict[str, float]]
+    scores: Optional[Dict[str, Any]]
     
     class Config:
         from_attributes = True

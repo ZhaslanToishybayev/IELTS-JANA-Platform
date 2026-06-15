@@ -30,6 +30,8 @@ async def generate_reading_test(request: UrlRequest, current_user: dict = Depend
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
             
+        result["needs_review"] = True
+        result["approved"] = False
         return result
         
     except Exception as e:

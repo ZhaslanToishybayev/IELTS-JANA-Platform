@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { api } from '@/lib/api';
+import { api, type TodayPlan } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
     ProgressRing,
@@ -22,8 +22,6 @@ import {
     Target,
     Sparkles,
     ArrowRight,
-    TrendingUp,
-    LayoutDashboard
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,26 +44,77 @@ interface DashboardData {
         accuracy_rate: number;
         is_unlocked: boolean;
     }[];
+    section_bands: Record<string, number>;
+    weak_question_types: { module: string; question_type: string; mistakes: number }[];
+    mistake_log: { id: number; module: string; question_type: string; question_text: string; correct_answer: string }[];
+    next_recommended_session: { module: string; mode: string; question_type?: string; duration_minutes: number; reason: string } | null;
 }
 
 export function Dashboard() {
-    const { token, user } = useAuth();
+    const { token } = useAuth();
     const [data, setData] = useState<DashboardData | null>(null);
+    const [todayPlan, setTodayPlan] = useState<TodayPlan | null>(null);
+    const [planError, setPlanError] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!token) return;
 
-        api.getDashboard(token)
-            .then(setData)
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        const authToken = token;
+        let cancelled = false;
+
+        async function loadDashboard() {
+            setLoading(true);
+            setError(null);
+            setPlanError(null);
+
+            const [dashboardResult, planResult] = await Promise.allSettled([
+                api.getDashboard(authToken),
+                api.getTodayPlan(authToken),
+            ]);
+
+            if (cancelled) return;
+
+            if (dashboardResult.status === 'fulfilled') {
+                setData(dashboardResult.value);
+            } else {
+                console.error(dashboardResult.reason);
+                setError('Unable to load your dashboard right now.');
+            }
+
+            if (planResult.status === 'fulfilled') {
+                setTodayPlan(planResult.value);
+            } else {
+                console.error(planResult.reason);
+                setPlanError("Today's plan is temporarily unavailable.");
+            }
+
+            setLoading(false);
+        }
+
+        loadDashboard();
+
+        return () => {
+            cancelled = true;
+        };
     }, [token]);
 
-    if (loading || !data) {
+    if (loading) {
         return (
             <div className="min-h-[60vh] flex items-center justify-center">
                 <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    if (error || !data) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center px-4">
+                <div className="card p-6 text-center max-w-md">
+                    <h2 className="text-lg font-black text-slate-900 dark:text-white">Dashboard unavailable</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{error || 'Please try again in a moment.'}</p>
+                </div>
             </div>
         );
     }
@@ -177,6 +226,68 @@ export function Dashboard() {
                 </div>
             </div>
 
+            {/* Today's Plan */}
+            <div className="card p-6 !rounded-2xl overflow-hidden">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                    <div className="space-y-4 flex-1">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center text-white">
+                                <Target className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+                                    {todayPlan?.title || "Today's IELTS Plan"}
+                                </h2>
+                                <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-widest text-slate-400 mt-1">
+                                    <span className="flex items-center gap-1.5">
+                                        <Clock className="w-3.5 h-3.5" />
+                                        {todayPlan?.estimated_minutes || 25} min
+                                    </span>
+                                    <span>
+                                        {todayPlan?.focus_skill
+                                            ? `${todayPlan.focus_skill.skill_name} (${Math.round(todayPlan.focus_skill.mastery_probability * 100)}%)`
+                                            : 'Initial diagnostic'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {planError ? (
+                            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{planError}</p>
+                        ) : (
+                            <>
+                                <p className="text-sm font-medium text-slate-600 dark:text-slate-300 max-w-2xl">
+                                    {todayPlan?.reason}
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                    {todayPlan?.tasks.slice(0, 3).map((task) => (
+                                        <div key={`${task.type}-${task.label}`} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                                            <div className="text-sm font-black text-slate-900 dark:text-white">{task.label}</div>
+                                            <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mt-2">
+                                                Target: {task.target}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="lg:w-56 flex flex-col gap-3">
+                        {todayPlan && (
+                            <div className="flex items-center justify-between rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 px-4 py-3">
+                                <span className="text-xs font-black uppercase tracking-widest text-blue-700 dark:text-blue-300">Reward</span>
+                                <span className="text-sm font-black text-blue-700 dark:text-blue-300">+{todayPlan.reward.xp} XP</span>
+                            </div>
+                        )}
+                        <Link href="/practice" className="inline-flex items-center justify-center gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl px-5 py-3 text-sm font-black hover:opacity-95 transition">
+                            Start today&apos;s plan
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
+                    </div>
+                </div>
+            </div>
+
             {/* Main Action Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 {[
@@ -210,6 +321,43 @@ export function Dashboard() {
             {/* AI Recommendations & Tools */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="md:col-span-2 space-y-6">
+                    <div className="card p-6 !rounded-2xl">
+                        <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2 mb-5">
+                            <BarChart3 className="w-5 h-5 text-blue-600" />
+                            IELTS Bands by Section
+                        </h2>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {['reading', 'listening', 'writing', 'speaking'].map((section) => (
+                                <div key={section} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">{section}</div>
+                                    <div className="text-3xl font-black text-slate-900 dark:text-white">
+                                        {data.section_bands?.[section]?.toFixed(1) || '-'}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {data.weak_question_types?.length > 0 && (
+                        <div className="card p-6 !rounded-2xl">
+                            <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2 mb-5">
+                                <Target className="w-5 h-5 text-rose-500" />
+                                Weak Question Types
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {data.weak_question_types.map((item) => (
+                                    <div key={`${item.module}-${item.question_type}`} className="flex items-center justify-between p-4 rounded-xl bg-rose-50 dark:bg-rose-900/10 border border-rose-100 dark:border-rose-900/30">
+                                        <div>
+                                            <div className="font-black text-slate-900 dark:text-white">{item.question_type}</div>
+                                            <div className="text-[10px] font-black uppercase tracking-widest text-rose-500">{item.module}</div>
+                                        </div>
+                                        <div className="text-sm font-black text-rose-600">{item.mistakes} mistakes</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Mastery Breakdown */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
@@ -246,6 +394,29 @@ export function Dashboard() {
                 </div>
 
                 <div className="space-y-6">
+                    {data.next_recommended_session && (
+                        <Link href={data.next_recommended_session.module === 'LISTENING' ? '/listening' : '/practice'} className="block bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl p-6 hover:opacity-95 transition">
+                            <h3 className="font-black uppercase tracking-widest text-xs mb-3">Next Session</h3>
+                            <div className="text-2xl font-black mb-2">{data.next_recommended_session.module}</div>
+                            <p className="text-sm opacity-80 leading-relaxed">{data.next_recommended_session.reason}</p>
+                            <div className="mt-4 text-xs font-black uppercase tracking-widest opacity-60">{data.next_recommended_session.duration_minutes} minutes</div>
+                        </Link>
+                    )}
+
+                    {data.mistake_log?.length > 0 && (
+                        <div className="card p-6 !rounded-2xl">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-4">Mistake Log</h3>
+                            <div className="space-y-3">
+                                {data.mistake_log.slice(0, 3).map((item) => (
+                                    <div key={item.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-1">{item.module} / {item.question_type}</div>
+                                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300 line-clamp-2">{item.question_text}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Pro Tip Card */}
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/50 rounded-2xl p-6 relative overflow-hidden">
                         <Sparkles className="w-8 h-8 text-blue-600/20 absolute -top-1 -right-1" />

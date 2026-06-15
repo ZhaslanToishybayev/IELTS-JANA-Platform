@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     bkt_slip_rate: float = 0.1
     
     # AI Configuration
+    ai_provider: str = "ollama"  # ollama, gemini, local, auto
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:7b"
+    ollama_timeout_sec: int = 20
+    whisper_model: str = "base"
     gemini_api_key: str | None = None
     
     # Email Configuration (SMTP)

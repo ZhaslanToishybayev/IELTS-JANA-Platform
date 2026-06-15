@@ -5,6 +5,7 @@ from .schemas import (
     QuestionBase, QuestionCreate, QuestionResponse, QuestionWithAnswer,
     AttemptCreate, AttemptResponse,
     SkillProgress, DashboardResponse, ProgressHistoryItem,
+    TodayPlanFocusSkill, TodayPlanTask, TodayPlanReward, TodayPlanResponse,
     SkillTreeNode, SkillTreeResponse,
     NextQuestionResponse, MockSessionResponse
 )
@@ -16,6 +17,7 @@ __all__ = [
     "QuestionBase", "QuestionCreate", "QuestionResponse", "QuestionWithAnswer",
     "AttemptCreate", "AttemptResponse",
     "SkillProgress", "DashboardResponse", "ProgressHistoryItem",
+    "TodayPlanFocusSkill", "TodayPlanTask", "TodayPlanReward", "TodayPlanResponse",
     "SkillTreeNode", "SkillTreeResponse",
     "NextQuestionResponse", "MockSessionResponse"
 ]

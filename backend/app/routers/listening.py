@@ -10,9 +10,10 @@ import uuid
 from pathlib import Path
 
 from ..database import get_db
-from ..models import User, Question, Skill, Attempt
+from ..models import User, Question, Skill, Attempt, MistakeReview
 from ..routers.auth import get_current_user
 from ..config import get_settings
+from ..services.scoring import answer_matches
 
 settings = get_settings()
 router = APIRouter(prefix="/listening", tags=["Listening"])
@@ -49,7 +50,7 @@ async def get_listening_questions(
     db: Session = Depends(get_db)
 ):
     """Get listening practice questions with audio."""
-    query = db.query(Question).filter(Question.module == "LISTENING")
+    query = db.query(Question).filter(Question.module == "LISTENING", Question.approved == True)
     
     if difficulty:
         query = query.filter(Question.difficulty == difficulty)
@@ -205,7 +206,7 @@ async def submit_listening_answer(
         )
     
     # Check answer
-    is_correct = submission.user_answer.strip().lower() == question.correct_answer.strip().lower()
+    is_correct = answer_matches(submission.user_answer, question.correct_answer)
     
     # Create attempt
     attempt = Attempt(
@@ -217,6 +218,18 @@ async def submit_listening_answer(
         xp_earned=15 if is_correct else 0  # Base XP for listening
     )
     db.add(attempt)
+    db.flush()
+    if not is_correct:
+        db.add(MistakeReview(
+            user_id=current_user.id,
+            question_id=question.id,
+            attempt_id=attempt.id,
+            module=question.module,
+            question_type=question.question_type,
+            user_answer=submission.user_answer,
+            correct_answer=question.correct_answer,
+            explanation=question.explanation,
+        ))
     db.commit()
     
     return {

@@ -1,4 +1,26 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+
+export interface TodayPlan {
+    title: string;
+    estimated_minutes: number;
+    focus_skill: {
+        skill_id: number;
+        skill_name: string;
+        category: string;
+        mastery_probability: number;
+    } | null;
+    tasks: {
+        type: string;
+        label: string;
+        target: number;
+        href: string;
+    }[];
+    reason: string;
+    reward: {
+        xp: number;
+        streak: boolean;
+    };
+}
 
 interface FetchOptions extends RequestInit {
     token?: string;
@@ -113,6 +135,131 @@ class ApiClient {
         return this.fetch<{ category: string; question_count: number }[]>('/questions/categories', { token });
     }
 
+    async getNextPractice(token: string, module = 'READING', mode = 'weakness', questionType?: string) {
+        const params = new URLSearchParams({ module, mode });
+        if (questionType) params.append('question_type', questionType);
+        return this.fetch<{
+            question: {
+                id: number;
+                skill_id: number;
+                passage: string;
+                passage_title: string | null;
+                question_text: string;
+                question_type: string;
+                options: string[] | null;
+                difficulty: number;
+                audio_url?: string | null;
+                audio_duration_sec?: number | null;
+                transcript_available?: boolean;
+            };
+            target_skill: string;
+            reason: string;
+            session_progress: number;
+        }>(`/practice/next?${params.toString()}`, { token });
+    }
+
+    async getMistakes(token: string, module?: string) {
+        const params = module ? `?module=${module}` : '';
+        return this.fetch<{ mistakes: {
+            id: number;
+            module: string;
+            question_type: string;
+            question_text: string;
+            user_answer: string;
+            correct_answer: string;
+            explanation: string | null;
+            created_at: string;
+        }[] }>(`/review/mistakes${params}`, { token });
+    }
+
+    async resolveMistake(token: string, mistakeId: number) {
+        return this.fetch<{ message: string; id: number }>(`/review/mistakes/${mistakeId}/resolve`, {
+            method: 'POST',
+            token,
+        });
+    }
+
+    async getStudyPlan(token: string, minutes = 60) {
+        return this.fetch<{ minutes: number; total_attempts: number; items: unknown[] }>(`/study-plan/today?minutes=${minutes}`, { token });
+    }
+
+    async getTodayPlan(token: string) {
+        return this.fetch<TodayPlan>('/plan/today', { token });
+    }
+
+    async getContentTests(token: string, module?: string) {
+        const params = module ? `?module=${module}` : '';
+        return this.fetch<{ tests: unknown[] }>(`/content/tests${params}`, { token });
+    }
+
+    async getAdminDashboard(token: string) {
+        return this.fetch<{
+            users: { total: number; new_this_week: number; active_this_week: number };
+            questions: { total: number; by_module: Record<string, number> };
+            attempts: { total: number; today: number; avg_accuracy: number };
+            achievements: { total: number; total_unlocked: number };
+        }>('/admin/dashboard', { token });
+    }
+
+    async getAdminContent(token: string, statusFilter = 'all', module?: string) {
+        const params = new URLSearchParams({ status_filter: statusFilter });
+        if (module) params.append('module', module);
+        return this.fetch<{
+            content: {
+                id: number;
+                title: string;
+                module: string;
+                section: string | null;
+                source: string;
+                estimated_band: number | null;
+                time_limit_minutes: number | null;
+                needs_review: boolean;
+                approved: boolean;
+                question_count: number;
+                created_at: string;
+            }[];
+        }>(`/admin/content?${params.toString()}`, { token });
+    }
+
+    async importAdminContent(token: string, payload: unknown) {
+        return this.fetch<{ created_test_sets: number[]; count: number }>('/admin/content/import', {
+            method: 'POST',
+            token,
+            body: JSON.stringify(payload),
+        });
+    }
+
+    async approveAdminContent(token: string, contentId: number) {
+        return this.fetch<{ message: string; id: number }>(`/admin/content/${contentId}/approve`, {
+            method: 'POST',
+            token,
+        });
+    }
+
+    async getAdminQuestions(token: string, module?: string) {
+        const params = module ? `?module=${module}` : '';
+        return this.fetch<{
+            total: number;
+            questions: {
+                id: number;
+                skill_id: number;
+                passage_title: string | null;
+                question_text: string;
+                question_type: string;
+                difficulty: number;
+                module: string;
+            }[];
+        }>(`/admin/questions${params}`, { token });
+    }
+
+    async getWritingPrompts(token: string) {
+        return this.fetch<{ prompts: unknown[] }>('/prompts/writing', { token });
+    }
+
+    async getSpeakingPrompts(token: string) {
+        return this.fetch<{ prompts: unknown[] }>('/prompts/speaking', { token });
+    }
+
     // Dashboard
     async getDashboard(token: string) {
         return this.fetch<{
@@ -134,6 +281,10 @@ class ApiClient {
                 accuracy_rate: number;
                 is_unlocked: boolean;
             }[];
+            section_bands: Record<string, number>;
+            weak_question_types: { module: string; question_type: string; mistakes: number }[];
+            mistake_log: { id: number; module: string; question_type: string; question_text: string; correct_answer: string }[];
+            next_recommended_session: { module: string; mode: string; question_type?: string; duration_minutes: number; reason: string } | null;
         }>('/dashboard/progress', { token });
     }
 
@@ -214,6 +365,19 @@ class ApiClient {
         });
     }
 
+    async getWritingHistory(token: string) {
+        return this.fetch<{ attempts: {
+            id: number;
+            created_at: string;
+            task_type: string;
+            prompt_text: string;
+            band_score: number;
+            criterion_scores: Record<string, number>;
+            word_count: number;
+            time_spent_sec: number | null;
+        }[] }>('/writing/history', { token });
+    }
+
     // Speaking
     async analyzeSpeaking(token: string, audioBlob: Blob, promptText: string) {
         const formData = new FormData();
@@ -236,9 +400,20 @@ class ApiClient {
         return response.json();
     }
 
+    async getSpeakingHistory(token: string) {
+        return this.fetch<{ attempts: {
+            id: number;
+            created_at: string;
+            prompt_text: string;
+            band_score: number;
+            criterion_scores: Record<string, number>;
+            time_spent_sec: number | null;
+        }[] }>('/speaking/history', { token });
+    }
+
     // Vocabulary
     async getDueFlashcards(token: string) {
-        return this.fetch<any[]>('/vocabulary/due', { token });
+        return this.fetch<unknown[]>('/vocabulary/due', { token });
     }
 
     async addVocabulary(token: string, word: string, definition: string, context?: string) {
@@ -284,7 +459,16 @@ class ApiClient {
         });
     }
 
-    async submitMockListening(token: string, sessionId: string, answers: Record<string, any>) {
+    async getMockQuestions(token: string, module: string, limit = 12, sessionId?: string) {
+        const params = new URLSearchParams({ module, limit: String(limit) });
+        if (sessionId) params.append('session_id', sessionId);
+        return this.fetch<{ questions: { id: number; text: string; type: string; options: string[] | null; passage?: string; passage_title?: string; audio_url?: string | null; section?: string | null }[] }>(
+            `/mock/questions?${params.toString()}`,
+            { token }
+        );
+    }
+
+    async submitMockListening(token: string, sessionId: string, answers: Record<string, unknown>) {
         return this.fetch(`/mock/${sessionId}/listening`, {
             method: 'POST',
             token,
@@ -292,7 +476,7 @@ class ApiClient {
         });
     }
 
-    async submitMockReading(token: string, sessionId: string, answers: Record<string, any>) {
+    async submitMockReading(token: string, sessionId: string, answers: Record<string, unknown>) {
         return this.fetch(`/mock/${sessionId}/reading`, {
             method: 'POST',
             token,
@@ -308,12 +492,25 @@ class ApiClient {
         });
     }
 
+    async submitMockSpeaking(token: string, sessionId: string, transcript: string) {
+        return this.fetch(`/mock/${sessionId}/speaking`, {
+            method: 'POST',
+            token,
+            body: JSON.stringify({ transcript })
+        });
+    }
+
     async getMockResults(token: string, sessionId: string) {
         return this.fetch<{
             scores: {
                 listening: number;
+                listening_raw?: { correct: number; total: number };
                 reading: number;
+                reading_raw?: { correct: number; total: number };
                 writing: number;
+                writing_raw?: { words: number };
+                speaking: number;
+                speaking_raw?: { words: number };
                 overall: number;
             };
             status: string;

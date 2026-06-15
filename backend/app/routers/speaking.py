@@ -4,6 +4,9 @@ import os
 import uuid
 from app.services.speaking_service import analyze_audio_with_gemini
 from app.services.auth import get_current_user
+from app.database import get_db
+from app.models import SpeakingAttempt
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/speaking", tags=["speaking"])
 
@@ -14,7 +17,8 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 async def analyze_speaking(
     file: UploadFile = File(...),
     prompt_text: str = Form(...),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Upload audio and get AI feedback."""
     
@@ -42,8 +46,22 @@ async def analyze_speaking(
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Analyze with AI
         result = await analyze_audio_with_gemini(temp_path, prompt_text)
+        db.add(SpeakingAttempt(
+            user_id=current_user.id,
+            prompt_text=prompt_text,
+            audio_path=None,
+            transcription=result.get("transcription", ""),
+            band_score=result.get("band_score", 0.0),
+            criterion_scores={
+                "fluency_coherence": result.get("fluency_coherence", {}).get("score", 0.0),
+                "lexical_resource": result.get("lexical_resource", {}).get("score", 0.0),
+                "grammatical_range": result.get("grammatical_range", {}).get("score", 0.0),
+                "pronunciation": result.get("pronunciation", {}).get("score", 0.0),
+            },
+            feedback=result,
+        ))
+        db.commit()
         
         return result
         
@@ -54,3 +72,27 @@ async def analyze_speaking(
         # Cleanup temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+@router.get("/history")
+async def speaking_history(
+    limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    attempts = db.query(SpeakingAttempt).filter(
+        SpeakingAttempt.user_id == current_user.id
+    ).order_by(SpeakingAttempt.created_at.desc()).limit(limit).all()
+    return {
+        "attempts": [
+            {
+                "id": attempt.id,
+                "created_at": attempt.created_at,
+                "prompt_text": attempt.prompt_text,
+                "band_score": attempt.band_score,
+                "criterion_scores": attempt.criterion_scores or {},
+                "time_spent_sec": attempt.time_spent_sec,
+            }
+            for attempt in attempts
+        ]
+    }

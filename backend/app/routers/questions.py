@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from ..database import get_db
-from ..models import User, Question, Attempt, UserSkillMastery, Skill
+from ..models import User, Question, Attempt, UserSkillMastery, Skill, MistakeReview
 from ..schemas import AttemptCreate, AttemptResponse, NextQuestionResponse, QuestionResponse
 from ..routers.auth import get_current_user
 from ..ml import knowledge_tracer, adaptive_selector
@@ -14,6 +14,7 @@ from ..services import (
     check_and_unlock_skills
 )
 from ..services.dashboard import update_daily_metrics
+from ..services.scoring import answer_matches
 
 router = APIRouter(prefix="/questions", tags=["Questions"])
 
@@ -89,7 +90,7 @@ async def submit_answer(
         )
     
     # Check if answer is correct
-    is_correct = attempt_data.user_answer.strip().lower() == question.correct_answer.strip().lower()
+    is_correct = answer_matches(attempt_data.user_answer, question.correct_answer)
     
     # Update streak
     new_streak = update_streak(db, current_user)
@@ -149,6 +150,19 @@ async def submit_answer(
         xp_earned=xp_earned
     )
     db.add(attempt)
+    db.flush()
+
+    if not is_correct:
+        db.add(MistakeReview(
+            user_id=current_user.id,
+            question_id=question.id,
+            attempt_id=attempt.id,
+            module=question.module,
+            question_type=question.question_type,
+            user_answer=attempt_data.user_answer,
+            correct_answer=question.correct_answer,
+            explanation=question.explanation,
+        ))
     
     # Check for skill unlocks
     check_and_unlock_skills(db, current_user.id)

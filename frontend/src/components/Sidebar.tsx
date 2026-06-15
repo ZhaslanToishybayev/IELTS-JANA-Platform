@@ -9,7 +9,9 @@ import {
     PenTool,
     Mic2,
     Trophy,
-    Settings,
+    ClipboardCheck,
+    BarChart3,
+    Clock,
     LogOut,
     ChevronLeft,
     ChevronRight,
@@ -25,6 +27,9 @@ const navItems = [
     { name: 'Listening', href: '/listening', icon: Headphones },
     { name: 'Writing', href: '/writing', icon: PenTool },
     { name: 'Speaking', href: '/speaking', icon: Mic2 },
+    { name: 'Review', href: '/review', icon: ClipboardCheck },
+    { name: 'Progress', href: '/progress', icon: BarChart3 },
+    { name: 'Mock Exam', href: '/mock', icon: Clock },
     { name: 'Achievements', href: '/achievements', icon: Trophy },
 ];
 

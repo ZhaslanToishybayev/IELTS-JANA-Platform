@@ -27,9 +27,9 @@ export default function ProgressPage() {
                 <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
                     <div className="flex items-center gap-4">
                         <a href="/dashboard" className="text-white/70 hover:text-white">
-                            ← Back
+                            Back
                         </a>
-                        <h1 className="text-xl font-bold">📊 Progress Analytics</h1>
+                        <h1 className="text-xl font-bold">Progress Analytics</h1>
                     </div>
                 </div>
             </header>

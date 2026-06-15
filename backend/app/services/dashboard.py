@@ -5,9 +5,10 @@ from typing import List, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
-from ..models import User, Attempt, UserSkillMastery, Skill, DashboardMetric, Question
+from ..models import User, Attempt, UserSkillMastery, Skill, DashboardMetric, Question, MistakeReview
 from ..ml import knowledge_tracer
 from ..services.gamification import get_xp_to_next_level
+from ..services.scoring import raw_to_band, overall_band
 
 
 def get_dashboard_data(db: Session, user_id: int) -> Dict:
@@ -80,6 +81,74 @@ def get_dashboard_data(db: Session, user_id: int) -> Dict:
             "accuracy_rate": skill_accuracy,
             "is_unlocked": mastery.is_unlocked if mastery else (skill.parent_skill_id is None)
         })
+
+    section_bands = {}
+    for module in ["READING", "LISTENING"]:
+        module_attempts = db.query(Attempt).join(Question).filter(
+            Attempt.user_id == user_id,
+            Question.module == module
+        ).all()
+        if module_attempts:
+            correct = sum(1 for a in module_attempts if a.is_correct)
+            section_bands[module.lower()] = raw_to_band(correct, module, len(module_attempts))
+
+    writing_scores = [w.band_score for w in getattr(user, "writing_attempts", []) if w.band_score]
+    speaking_scores = [s.band_score for s in getattr(user, "speaking_attempts", []) if s.band_score]
+    if writing_scores:
+        section_bands["writing"] = writing_scores[-1]
+    if speaking_scores:
+        section_bands["speaking"] = speaking_scores[-1]
+    if section_bands:
+        estimated_band = overall_band(section_bands.values())
+
+    weak_rows = db.query(
+        Question.module,
+        Question.question_type,
+        func.count(MistakeReview.id).label("mistakes")
+    ).join(MistakeReview, MistakeReview.question_id == Question.id).filter(
+        MistakeReview.user_id == user_id,
+        MistakeReview.is_resolved == False
+    ).group_by(Question.module, Question.question_type).order_by(
+        func.count(MistakeReview.id).desc()
+    ).limit(5).all()
+    weak_question_types = [
+        {"module": module, "question_type": question_type, "mistakes": count}
+        for module, question_type, count in weak_rows
+    ]
+
+    mistakes = db.query(MistakeReview).filter(
+        MistakeReview.user_id == user_id,
+        MistakeReview.is_resolved == False
+    ).order_by(MistakeReview.created_at.desc()).limit(5).all()
+    mistake_log = [
+        {
+            "id": item.id,
+            "module": item.module,
+            "question_type": item.question_type,
+            "question_text": item.question.question_text,
+            "correct_answer": item.correct_answer,
+            "created_at": item.created_at,
+        }
+        for item in mistakes
+    ]
+
+    next_recommended_session = None
+    if weak_question_types:
+        weak = weak_question_types[0]
+        next_recommended_session = {
+            "module": weak["module"],
+            "mode": "mistake_review",
+            "question_type": weak["question_type"],
+            "duration_minutes": 30,
+            "reason": f"Most unresolved mistakes: {weak['question_type']}",
+        }
+    else:
+        next_recommended_session = {
+            "module": "READING",
+            "mode": "weakness",
+            "duration_minutes": 30,
+            "reason": "Start with adaptive reading to establish your baseline.",
+        }
     
     return {
         "username": user.username,
@@ -91,7 +160,11 @@ def get_dashboard_data(db: Session, user_id: int) -> Dict:
         "total_attempts": total_attempts,
         "overall_accuracy": overall_accuracy,
         "avg_response_time_ms": avg_response_time,
-        "skills": skills_data
+        "skills": skills_data,
+        "section_bands": section_bands,
+        "weak_question_types": weak_question_types,
+        "mistake_log": mistake_log,
+        "next_recommended_session": next_recommended_session,
     }
 
 

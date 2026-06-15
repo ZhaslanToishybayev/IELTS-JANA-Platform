@@ -13,13 +13,12 @@ import {
 import {
     ArrowLeft,
     Clock,
-    BarChart,
-    BookOpen,
     Info,
     CheckCircle2,
     ChevronRight,
     Sparkles,
-    AlertCircle
+    AlertCircle,
+    Target,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -72,6 +71,8 @@ export function ReadingPractice() {
     const [showXP, setShowXP] = useState(false);
     const [showLevelUp, setShowLevelUp] = useState(false);
     const [elapsedTime, setElapsedTime] = useState(0);
+    const [mode, setMode] = useState('weakness');
+    const [questionType, setQuestionType] = useState<string | undefined>(undefined);
 
     const fetchNextQuestion = useCallback(async () => {
         if (!token) return;
@@ -79,7 +80,7 @@ export function ReadingPractice() {
         setState(prev => ({ ...prev, loading: true }));
 
         try {
-            const data = await api.getNextQuestion(token);
+            const data = await api.getNextPractice(token, 'READING', mode, questionType);
             setState({
                 question: data.question,
                 targetSkill: data.target_skill,
@@ -96,7 +97,7 @@ export function ReadingPractice() {
             console.error('Failed to fetch question:', error);
             setState(prev => ({ ...prev, loading: false }));
         }
-    }, [token]);
+    }, [token, mode, questionType]);
 
     useEffect(() => {
         fetchNextQuestion();
@@ -168,6 +169,8 @@ export function ReadingPractice() {
     const handleContinue = () => {
         fetchNextQuestion();
     };
+
+    const isChoiceQuestion = Boolean(state.question?.options?.length);
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -246,6 +249,46 @@ export function ReadingPractice() {
                 </div>
             </div>
 
+            <div className="card p-4 mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-sm font-black text-slate-600 dark:text-slate-300">
+                    <Target className="w-4 h-4 text-blue-600" />
+                    Practice focus
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {[
+                        ['weakness', 'Weakness'],
+                        ['timed', 'Timed'],
+                        ['drill', 'Type drill'],
+                    ].map(([value, label]) => (
+                        <button
+                            key={value}
+                            onClick={() => setMode(value)}
+                            className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${mode === value ? 'bg-blue-600 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-500'}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {[
+                        [undefined, 'All'],
+                        ['TF_NG', 'TF/NG'],
+                        ['HEADINGS', 'Headings'],
+                        ['MATCHING', 'Matching'],
+                        ['SUMMARY', 'Summary'],
+                        ['MCQ', 'MCQ'],
+                    ].map(([value, label]) => (
+                        <button
+                            key={label}
+                            onClick={() => setQuestionType(value)}
+                            className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${questionType === value ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-slate-50 dark:bg-slate-800 text-slate-500'}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             {/* Session Progress Bar */}
             <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mb-10 overflow-hidden">
                 <motion.div
@@ -289,7 +332,7 @@ export function ReadingPractice() {
 
                         {/* Options */}
                         <div className="space-y-3">
-                            {state.question.options?.map((option, idx) => {
+                            {isChoiceQuestion ? state.question.options?.map((option, idx) => {
                                 const isSelected = state.selectedAnswer === option;
                                 return (
                                     <button
@@ -312,7 +355,15 @@ export function ReadingPractice() {
                                         </span>
                                     </button>
                                 );
-                            })}
+                            }) : (
+                                <input
+                                    value={state.selectedAnswer || ''}
+                                    onChange={(event) => handleSelectAnswer(event.target.value)}
+                                    disabled={state.submitted}
+                                    className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold outline-none focus:border-blue-600"
+                                    placeholder="Type your answer exactly as it appears in the passage"
+                                />
+                            )}
                         </div>
 
                         {/* Feedback & Actions */}

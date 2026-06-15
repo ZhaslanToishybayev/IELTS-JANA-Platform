@@ -8,7 +8,9 @@ from .routers import (
     auth_router, questions_router, dashboard_router, 
     gamification_router, writing_router, speaking_router, 
     vocabulary_router, generator_router, mock_router,
-    achievements_router, listening_router, admin_router
+    achievements_router, listening_router, admin_router,
+    content_router, practice_router, review_router, study_plan_router,
+    prompts_router, plan_router
 )
 from .middleware.rate_limiter import setup_rate_limiter
 
@@ -56,6 +58,12 @@ app.include_router(mock_router, prefix="/api")
 app.include_router(achievements_router, prefix="/api")
 app.include_router(listening_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
+app.include_router(content_router, prefix="/api")
+app.include_router(practice_router, prefix="/api")
+app.include_router(review_router, prefix="/api")
+app.include_router(study_plan_router, prefix="/api")
+app.include_router(prompts_router, prefix="/api")
+app.include_router(plan_router, prefix="/api")
 
 
 @app.get("/")

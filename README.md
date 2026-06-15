@@ -97,6 +97,32 @@ JANA/
 
 ## 🧠 AI/ML Components
 
+### Local AI Provider
+JANA is local-first for IELTS feedback. By default the backend tries Ollama at
+`http://localhost:11434` with `qwen2.5:7b`, then falls back to deterministic
+local scoring if Ollama is not running.
+
+Recommended local setup:
+
+```bash
+ollama pull qwen2.5:7b
+ollama serve
+```
+
+Backend `.env`:
+
+```env
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+WHISPER_MODEL=base
+```
+
+`AI_PROVIDER=gemini` or `AI_PROVIDER=auto` can still use `GEMINI_API_KEY` as an
+optional cloud provider. Speaking can use local Whisper when the Python
+`whisper` package is installed; otherwise it uses deterministic local fallback
+and still saves attempts.
+
 ### Bayesian Knowledge Tracing (BKT)
 Updates skill mastery probability after each attempt:
 - **P(L₀)**: Initial mastery probability (0.3)

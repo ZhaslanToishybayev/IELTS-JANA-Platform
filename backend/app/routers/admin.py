@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 
 from ..database import get_db
-from ..models import User, Question, Skill, Achievement, UserAchievement, Attempt
+from ..models import User, Question, Skill, Achievement, UserAchievement, Attempt, TestSet
 from ..routers.auth import get_current_user
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -50,13 +50,47 @@ class AchievementCreate(BaseModel):
     rarity: str = "COMMON"
 
 
+class ImportQuestion(BaseModel):
+    skill_id: int
+    question_text: str
+    question_type: str
+    correct_answer: str
+    options: Optional[List[str]] = None
+    explanation: Optional[str] = None
+    difficulty: int = 5
+    estimated_band: Optional[float] = None
+    tags: List[str] = []
+
+
+class ImportTestSet(BaseModel):
+    title: str
+    module: str
+    section: Optional[str] = None
+    instructions: Optional[str] = None
+    passage: Optional[str] = None
+    audio_url: Optional[str] = None
+    transcript: Optional[str] = None
+    source: str = "original"
+    estimated_band: Optional[float] = None
+    time_limit_minutes: Optional[int] = None
+    needs_review: bool = True
+    questions: List[ImportQuestion]
+
+
 # ============ Admin Auth ============
 
-async def require_admin(current_user: User = Depends(get_current_user)):
+async def require_admin(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Check if user has admin privileges (level 50+ or specific flag)."""
-    # For now, use level as a simple admin check
-    # In production, add is_admin field to User model
-    if current_user.level < 50 and current_user.email not in ["admin@ielts-jana.com"]:
+    # Local-first rule: the first single-user installation can manage its own content.
+    is_first_local_user = db.query(User).count() <= 1
+    if (
+        current_user.level < 50
+        and current_user.email not in ["admin@ielts-jana.com"]
+        and not is_first_local_user
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
@@ -235,6 +269,115 @@ async def delete_question(
     db.delete(question)
     db.commit()
     return {"message": "Question deleted successfully"}
+
+
+@router.post("/content/import")
+async def import_content(
+    payload: List[ImportTestSet],
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Import IELTS-style content from JSON. Imported content requires approval by default."""
+    created_sets = []
+    for item in payload:
+        test_set = TestSet(
+            title=item.title,
+            module=item.module.upper(),
+            section=item.section,
+            instructions=item.instructions,
+            passage=item.passage,
+            audio_url=item.audio_url,
+            transcript=item.transcript,
+            source=item.source,
+            estimated_band=item.estimated_band,
+            time_limit_minutes=item.time_limit_minutes,
+            needs_review=item.needs_review,
+            approved=not item.needs_review,
+        )
+        db.add(test_set)
+        db.flush()
+        for q in item.questions:
+            db.add(Question(
+                skill_id=q.skill_id,
+                test_set_id=test_set.id,
+                module=item.module.upper(),
+                section=item.section,
+                passage=item.passage or item.transcript,
+                passage_title=item.title,
+                audio_url=item.audio_url,
+                audio_duration_sec=None,
+                question_text=q.question_text,
+                question_type=q.question_type,
+                options=q.options,
+                correct_answer=q.correct_answer,
+                difficulty=q.difficulty,
+                estimated_band=q.estimated_band,
+                explanation=q.explanation,
+                tags=q.tags,
+                needs_review=item.needs_review,
+                approved=not item.needs_review,
+            ))
+        created_sets.append(test_set.id)
+    db.commit()
+    return {"created_test_sets": created_sets, "count": len(created_sets)}
+
+
+@router.get("/content")
+async def list_content(
+    status_filter: str = "all",
+    module: Optional[str] = None,
+    limit: int = 50,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """List imported test sets for local content review."""
+    query = db.query(TestSet)
+    if status_filter == "pending":
+        query = query.filter(TestSet.needs_review == True)
+    elif status_filter == "approved":
+        query = query.filter(TestSet.approved == True)
+    if module:
+        query = query.filter(TestSet.module == module.upper())
+
+    test_sets = query.order_by(TestSet.created_at.desc()).limit(limit).all()
+    return {
+        "content": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "module": item.module,
+                "section": item.section,
+                "source": item.source,
+                "estimated_band": item.estimated_band,
+                "time_limit_minutes": item.time_limit_minutes,
+                "needs_review": item.needs_review,
+                "approved": item.approved,
+                "question_count": len(item.questions),
+                "created_at": item.created_at,
+            }
+            for item in test_sets
+        ]
+    }
+
+
+@router.post("/content/{content_id}/approve")
+async def approve_content(
+    content_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Approve an imported test set and all its questions for practice."""
+    test_set = db.query(TestSet).filter(TestSet.id == content_id).first()
+    if not test_set:
+        raise HTTPException(status_code=404, detail="Content not found")
+    test_set.approved = True
+    test_set.needs_review = False
+    db.query(Question).filter(Question.test_set_id == content_id).update({
+        "approved": True,
+        "needs_review": False,
+    })
+    db.commit()
+    return {"message": "Content approved", "id": content_id}
 
 
 # ============ Users Management ============

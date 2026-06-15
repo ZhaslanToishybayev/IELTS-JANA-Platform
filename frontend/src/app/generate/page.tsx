@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 
 export default function GeneratorPage() {
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     const [url, setUrl] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [generatedtest, setGeneratedTest] = useState<any>(null);
@@ -18,8 +18,7 @@ export default function GeneratorPage() {
         if (!url) return;
         setIsLoading(true);
         try {
-            // Use dummy token or real token
-            const token = user ? 'valid_token' : 'demo_verify';
+            if (!token) return;
             const res = await api.generateReadingTest(token, url);
             setGeneratedTest(res);
         } catch (err) {

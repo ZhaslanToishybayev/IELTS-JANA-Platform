@@ -40,7 +40,11 @@ async def get_progress(
             total_attempts=0,
             overall_accuracy=0,
             avg_response_time_ms=0,
-            skills=[]
+            skills=[],
+            section_bands={},
+            weak_question_types=[],
+            mistake_log=[],
+            next_recommended_session=None,
         )
     
     return DashboardResponse(
@@ -53,7 +57,11 @@ async def get_progress(
         total_attempts=data["total_attempts"],
         overall_accuracy=data["overall_accuracy"],
         avg_response_time_ms=data["avg_response_time_ms"],
-        skills=[SkillProgress(**s) for s in data["skills"]]
+        skills=[SkillProgress(**s) for s in data["skills"]],
+        section_bands=data.get("section_bands", {}),
+        weak_question_types=data.get("weak_question_types", []),
+        mistake_log=data.get("mistake_log", []),
+        next_recommended_session=data.get("next_recommended_session"),
     )
 
 

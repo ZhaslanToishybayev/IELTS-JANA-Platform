@@ -13,7 +13,6 @@ import {
     ArrowLeft,
     Play,
     Pause,
-    RotateCcw,
     Volume2,
     FileText,
     AlertCircle,
@@ -22,7 +21,8 @@ import {
     Sparkles,
     Info,
     Clock,
-    Headphones
+    PenTool,
+    Target
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -60,23 +60,17 @@ export function ListeningPractice() {
     const [showTranscript, setShowTranscript] = useState(false);
     const [playCount, setPlayCount] = useState(0);
     const [elapsedTime, setElapsedTime] = useState(0);
+    const [mode, setMode] = useState('weakness');
+    const [questionType, setQuestionType] = useState<string | undefined>(undefined);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
 
     const fetchNextQuestion = useCallback(async () => {
         if (!token) return;
         setLoading(true);
 
         try {
-            const response = await fetch(`http://localhost:8000/api/questions/next?module=LISTENING`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setQuestion(data.question);
-            } else {
-                const data = await api.getNextQuestion(token);
-                setQuestion(data.question as ListeningQuestion);
-            }
+            const data = await api.getNextPractice(token, 'LISTENING', mode, questionType);
+            setQuestion(data.question as ListeningQuestion);
 
             setSelectedAnswer('');
             setSubmitted(false);
@@ -90,7 +84,7 @@ export function ListeningPractice() {
         } finally {
             setLoading(false);
         }
-    }, [token]);
+    }, [token, mode, questionType]);
 
     useEffect(() => {
         fetchNextQuestion();
@@ -105,12 +99,32 @@ export function ListeningPractice() {
     }, [loading, submitted, startTime]);
 
     const handlePlayAudio = () => {
+        if (!question || playCount >= 2) return;
         setIsPlaying(true);
         setPlayCount(prev => prev + 1);
-        const duration = question?.audio_duration_sec || 30;
-        setTimeout(() => {
-            setIsPlaying(false);
-        }, Math.min(duration * 1000, 5000));
+        if (question.audio_url) {
+            const src = question.audio_url.startsWith('http')
+                ? question.audio_url
+                : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}${question.audio_url.replace('/api', '')}`;
+            const audio = new Audio(src);
+            audioRef.current = audio;
+            audio.onended = () => setIsPlaying(false);
+            audio.onerror = () => setIsPlaying(false);
+            audio.play().catch(() => setIsPlaying(false));
+        } else if ('speechSynthesis' in window && question.passage) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(question.passage);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.92;
+            utterance.onend = () => setIsPlaying(false);
+            utterance.onerror = () => setIsPlaying(false);
+            window.speechSynthesis.speak(utterance);
+        } else {
+            const duration = question?.audio_duration_sec || 30;
+            setTimeout(() => {
+                setIsPlaying(false);
+            }, Math.min(duration * 1000, 5000));
+        }
     };
 
     const handleSubmit = async () => {
@@ -155,6 +169,17 @@ export function ListeningPractice() {
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
+
+    useEffect(() => {
+        return () => {
+            audioRef.current?.pause();
+            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+        };
+    }, []);
+
+    const isChoiceQuestion = Boolean(question?.options?.length);
 
     if (loading) {
         return (
@@ -217,6 +242,45 @@ export function ListeningPractice() {
                 </div>
             </div>
 
+            <div className="card p-4 mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-sm font-black text-slate-600 dark:text-slate-300">
+                    <Target className="w-4 h-4 text-blue-600" />
+                    Listening focus
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {[
+                        ['weakness', 'Weakness'],
+                        ['timed', 'Timed'],
+                        ['drill', 'Type drill'],
+                    ].map(([value, label]) => (
+                        <button
+                            key={value}
+                            onClick={() => setMode(value)}
+                            className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${mode === value ? 'bg-blue-600 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-500'}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {[
+                        [undefined, 'All'],
+                        ['FORM_COMPLETION', 'Form'],
+                        ['MAP_PLAN', 'Map/Plan'],
+                        ['MATCHING', 'Matching'],
+                        ['MCQ', 'MCQ'],
+                    ].map(([value, label]) => (
+                        <button
+                            key={label}
+                            onClick={() => setQuestionType(value)}
+                            className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${questionType === value ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-slate-50 dark:bg-slate-800 text-slate-500'}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             {/* Audio Section Card */}
             <div className="card p-8 md:p-10 !rounded-3xl shadow-xl shadow-slate-200/40 dark:shadow-none border-t-4 border-t-blue-600 mb-10">
                 <div className="flex flex-col md:flex-row items-center gap-8">
@@ -240,9 +304,15 @@ export function ListeningPractice() {
                                 {question.passage_title || 'IELTS Audio Recording'}
                             </h3>
                             <span className="font-mono text-slate-400 font-bold">
-                                {formatTime(isPlaying ? 5 : 0)} / {formatTime(question.audio_duration_sec || 30)}
+                                {formatTime(isPlaying ? Math.min(elapsedTime, question.audio_duration_sec || 90) : 0)} / {formatTime(question.audio_duration_sec || 90)}
                             </span>
                         </div>
+
+                        {!question.audio_url && (
+                            <div className="text-[10px] font-black uppercase tracking-widest text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg inline-flex">
+                                Local speech fallback: no audio file attached
+                            </div>
+                        )}
 
                         <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                             <motion.div
@@ -263,13 +333,14 @@ export function ListeningPractice() {
                 </div>
 
                 {/* Transcript Disclosure */}
+                {submitted && (
                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
                     <button
                         onClick={() => setShowTranscript(!showTranscript)}
                         className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors"
                     >
                         <FileText className="w-3.5 h-3.5" />
-                        {showTranscript ? 'Hide' : 'Show'} Transcript (Debug)
+                        {showTranscript ? 'Hide' : 'Show'} Transcript
                     </button>
                     <AnimatePresence>
                         {showTranscript && (
@@ -286,6 +357,7 @@ export function ListeningPractice() {
                         )}
                     </AnimatePresence>
                 </div>
+                )}
             </div>
 
             {/* Question Interface */}
@@ -301,7 +373,7 @@ export function ListeningPractice() {
                 </div>
 
                 <div className="space-y-3">
-                    {question.question_type === 'MCQ' ? (
+                    {isChoiceQuestion ? (
                         <div className="grid grid-cols-1 gap-3">
                             {question.options?.map((option, idx) => {
                                 const isSelected = selectedAnswer === option;

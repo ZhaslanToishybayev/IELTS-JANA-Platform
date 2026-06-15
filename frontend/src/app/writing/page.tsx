@@ -72,9 +72,13 @@ const WRITING_PROMPTS = [
     },
 ];
 
+type WritingPrompt = typeof WRITING_PROMPTS[number];
+type WritingHistoryItem = Awaited<ReturnType<typeof api.getWritingHistory>>['attempts'][number];
+
 export default function WritingPage() {
     const { user, token } = useAuth();
-    const [selectedPrompt, setSelectedPrompt] = useState<typeof WRITING_PROMPTS[0] | null>(null);
+    const [prompts, setPrompts] = useState<WritingPrompt[]>(WRITING_PROMPTS);
+    const [selectedPrompt, setSelectedPrompt] = useState<WritingPrompt | null>(null);
     const [essay, setEssay] = useState('');
     const [wordCount, setWordCount] = useState(0);
     const [timeLeft, setTimeLeft] = useState(0);
@@ -82,6 +86,23 @@ export default function WritingPage() {
     const [showFeedback, setShowFeedback] = useState(false);
     const [checkResult, setCheckResult] = useState<any>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [history, setHistory] = useState<WritingHistoryItem[]>([]);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!token) return;
+        Promise.all([
+            api.getWritingPrompts(token),
+            api.getWritingHistory(token),
+        ])
+            .then((res) => {
+                if (Array.isArray(res[0].prompts) && res[0].prompts.length > 0) {
+                    setPrompts(res[0].prompts as WritingPrompt[]);
+                }
+                setHistory(res[1].attempts);
+            })
+            .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load writing data'));
+    }, [token]);
 
     useEffect(() => {
         let timer: NodeJS.Timeout;
@@ -95,7 +116,7 @@ export default function WritingPage() {
         return () => clearInterval(timer);
     }, [isWriting, timeLeft]);
 
-    const startWriting = (prompt: typeof WRITING_PROMPTS[0]) => {
+    const startWriting = (prompt: WritingPrompt) => {
         setSelectedPrompt(prompt);
         setEssay('');
         setWordCount(0);
@@ -103,6 +124,7 @@ export default function WritingPage() {
         setIsWriting(true);
         setShowFeedback(false);
         setCheckResult(null);
+        setError(null);
     };
 
     const handleEssayChange = (text: string) => {
@@ -112,7 +134,7 @@ export default function WritingPage() {
     };
 
     const submitEssay = async () => {
-        if (!selectedPrompt) return;
+        if (!selectedPrompt || !token) return;
 
         setIsWriting(false);
         setShowFeedback(true);
@@ -120,15 +142,16 @@ export default function WritingPage() {
 
         try {
             const res = await api.evaluateWriting(
-                token || 'demo_token',
+                token,
                 essay,
                 selectedPrompt.type,
                 selectedPrompt.prompt
             );
 
             setCheckResult(res);
+            api.getWritingHistory(token).then((data) => setHistory(data.attempts)).catch(console.error);
         } catch (err) {
-            console.error(err);
+            setError(err instanceof Error ? err.message : 'Writing evaluation failed');
         } finally {
             setIsAnalyzing(false);
         }
@@ -152,8 +175,14 @@ export default function WritingPage() {
                         <p className="text-slate-500 font-medium">Master Task 1 and Task 2 with real-time AI evaluation.</p>
                     </div>
 
+                    {error && (
+                        <div className="card p-4 border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 font-bold">
+                            {error}
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {WRITING_PROMPTS.map((prompt, idx) => (
+                        {prompts.map((prompt, idx) => (
                             <motion.div
                                 key={prompt.id}
                                 initial={{ opacity: 0, y: 20 }}
@@ -188,6 +217,32 @@ export default function WritingPage() {
                                 </div>
                             </motion.div>
                         ))}
+                    </div>
+
+                    <div className="card p-6 !rounded-3xl space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                <History className="w-5 h-5 text-blue-600" />
+                                Recent Writing Attempts
+                            </h2>
+                            <span className="text-xs font-black uppercase tracking-widest text-slate-400">{history.length} saved</span>
+                        </div>
+                        {history.length === 0 ? (
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">Submit an essay to build your writing history.</p>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {history.slice(0, 6).map((attempt) => (
+                                    <div key={attempt.id} className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-800">
+                                        <div className="flex items-center justify-between gap-4 mb-2">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">{attempt.task_type}</span>
+                                            <span className="text-2xl font-black text-slate-900 dark:text-white">{attempt.band_score}</span>
+                                        </div>
+                                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 line-clamp-2">{attempt.prompt_text}</p>
+                                        <p className="text-xs text-slate-400 font-bold mt-2">{attempt.word_count} words</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             ) : showFeedback ? (

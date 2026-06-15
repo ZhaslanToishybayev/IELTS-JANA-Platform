@@ -51,7 +51,7 @@ You should say:
 • why you decided to read it
 • what you learned from it
 and explain whether you would recommend it to others.`,
-        prepTime: 10, // Shortened for demo/dev, real is 60
+        prepTime: 60,
         speakTime: 120,
     },
     {
@@ -83,10 +83,13 @@ and explain why this journey was memorable.`,
 ];
 
 type RecordingState = 'idle' | 'preparing' | 'recording' | 'finished';
+type SpeakingTopic = typeof SPEAKING_TOPICS[number];
+type SpeakingHistoryItem = Awaited<ReturnType<typeof api.getSpeakingHistory>>['attempts'][number];
 
 export default function SpeakingPage() {
     const { user, token } = useAuth();
-    const [selectedTopic, setSelectedTopic] = useState<typeof SPEAKING_TOPICS[0] | null>(null);
+    const [topics, setTopics] = useState<SpeakingTopic[]>(SPEAKING_TOPICS);
+    const [selectedTopic, setSelectedTopic] = useState<SpeakingTopic | null>(null);
     const [recordingState, setRecordingState] = useState<RecordingState>('idle');
     const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
     const [timeLeft, setTimeLeft] = useState(0);
@@ -95,21 +98,40 @@ export default function SpeakingPage() {
     const [permissionError, setPermissionError] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [feedback, setFeedback] = useState<any>(null);
+    const [history, setHistory] = useState<SpeakingHistoryItem[]>([]);
+    const [error, setError] = useState<string | null>(null);
 
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
 
+    useEffect(() => {
+        if (!token) return;
+        Promise.all([
+            api.getSpeakingPrompts(token),
+            api.getSpeakingHistory(token),
+        ])
+            .then((res) => {
+                if (Array.isArray(res[0].prompts) && res[0].prompts.length > 0) {
+                    setTopics(res[0].prompts as SpeakingTopic[]);
+                }
+                setHistory(res[1].attempts);
+            })
+            .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load speaking data'));
+    }, [token]);
+
     const submitForAnalysis = async () => {
         if (!token || !audioUrl || !selectedTopic) return;
         setIsAnalyzing(true);
+        setError(null);
         try {
             const audioBlob = await fetch(audioUrl).then(r => r.blob());
             const promptText = selectedTopic?.cueCard || selectedTopic?.questions?.join(" ") || "General Speaking";
             const result = await api.analyzeSpeaking(token, audioBlob, promptText);
             setFeedback(result);
+            api.getSpeakingHistory(token).then((data) => setHistory(data.attempts)).catch(console.error);
         } catch (err) {
-            console.error(err);
+            setError(err instanceof Error ? err.message : 'Speaking analysis failed');
         } finally {
             setIsAnalyzing(false);
         }
@@ -122,7 +144,7 @@ export default function SpeakingPage() {
         };
     }, [audioUrl]);
 
-    const startPractice = async (topic: typeof SPEAKING_TOPICS[0]) => {
+    const startPractice = async (topic: SpeakingTopic) => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorderRef.current = new MediaRecorder(stream);
@@ -151,7 +173,7 @@ export default function SpeakingPage() {
         }
     };
 
-    const beginRecording = (topic: typeof SPEAKING_TOPICS[0]) => {
+    const beginRecording = (topic: SpeakingTopic) => {
         if (!mediaRecorderRef.current) return;
         setRecordingState('recording');
         setTimeLeft(topic.speakTime || topic.timePerQuestion || 60);
@@ -173,7 +195,7 @@ export default function SpeakingPage() {
         }, 1000);
     };
 
-    const nextQuestion = (topic: typeof SPEAKING_TOPICS[0]) => {
+    const nextQuestion = (topic: SpeakingTopic) => {
         const questions = topic.questions || [];
         if (currentQuestionIdx < questions.length - 1) {
             setCurrentQuestionIdx(prev => prev + 1);
@@ -201,6 +223,7 @@ export default function SpeakingPage() {
         setIsRecording(false);
         setAudioUrl(null);
         setFeedback(null);
+        setError(null);
         if (timerRef.current) clearInterval(timerRef.current);
     };
 
@@ -222,8 +245,14 @@ export default function SpeakingPage() {
                         <p className="text-slate-500 font-medium tracking-tight">Practice IELTS Speaking with real-time AI fluency and pronunciation checks.</p>
                     </div>
 
+                    {error && (
+                        <div className="card p-4 border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 font-bold">
+                            {error}
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {SPEAKING_TOPICS.map((topic, idx) => (
+                        {topics.map((topic, idx) => (
                             <motion.div
                                 key={topic.id}
                                 initial={{ opacity: 0, y: 20 }}
@@ -262,6 +291,32 @@ export default function SpeakingPage() {
                                 </div>
                             </motion.div>
                         ))}
+                    </div>
+
+                    <div className="card p-6 !rounded-3xl space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                <History className="w-5 h-5 text-rose-500" />
+                                Recent Speaking Attempts
+                            </h2>
+                            <span className="text-xs font-black uppercase tracking-widest text-slate-400">{history.length} saved</span>
+                        </div>
+                        {history.length === 0 ? (
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">Record a response to build your speaking history.</p>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {history.slice(0, 6).map((attempt) => (
+                                    <div key={attempt.id} className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-800">
+                                        <div className="flex items-center justify-between gap-4 mb-2">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-rose-500">Speaking</span>
+                                            <span className="text-2xl font-black text-slate-900 dark:text-white">{attempt.band_score}</span>
+                                        </div>
+                                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 line-clamp-2">{attempt.prompt_text}</p>
+                                        <p className="text-xs text-slate-400 font-bold mt-2">{new Date(attempt.created_at).toLocaleDateString()}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             ) : recordingState === 'finished' ? (

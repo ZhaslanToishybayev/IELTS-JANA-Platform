@@ -36,8 +36,11 @@ export function ProgressCharts() {
 
         const fetchData = async () => {
             try {
-                // Fetch dashboard data which includes skills
-                const dashboard = await api.getDashboard(token);
+                const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 365;
+                const [dashboard, history] = await Promise.all([
+                    api.getDashboard(token),
+                    api.getProgressHistory(token, days),
+                ]);
 
                 // Transform skills for radar chart
                 const skills = dashboard.skills.map((s: { skill_name: string; mastery_probability: number; attempts_count: number; category: string }) => ({
@@ -48,31 +51,21 @@ export function ProgressCharts() {
                 }));
                 setSkillData(skills);
 
-                // Generate mock progress history based on current data
-                // In production, this would come from dashboard_metrics table
-                const today = new Date();
-                const mockHistory: ProgressData[] = [];
-                const baseAccuracy = dashboard.overall_accuracy || 0.5;
-                const baseBand = dashboard.estimated_band || 5.0;
+                const realHistory = history.map((item) => ({
+                    date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    band: item.estimated_band,
+                    accuracy: item.accuracy_rate * 100,
+                    attempts: item.attempts_count,
+                    xp: item.xp_earned,
+                }));
 
-                for (let i = 13; i >= 0; i--) {
-                    const date = new Date(today);
-                    date.setDate(date.getDate() - i);
-
-                    // Simulate gradual improvement
-                    const progress = (14 - i) / 14;
-                    const dailyVariance = Math.random() * 0.1 - 0.05;
-
-                    mockHistory.push({
-                        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                        band: Math.max(4, Math.min(9, baseBand - 0.5 + progress * 0.8 + dailyVariance)),
-                        accuracy: Math.max(0, Math.min(100, (baseAccuracy * 100 - 15 + progress * 20 + dailyVariance * 100))),
-                        attempts: Math.floor(Math.random() * 15) + 5,
-                        xp: Math.floor(Math.random() * 200) + 50,
-                    });
-                }
-
-                setProgressHistory(mockHistory);
+                setProgressHistory(realHistory.length > 0 ? realHistory : [{
+                    date: 'Today',
+                    band: dashboard.estimated_band || 4,
+                    accuracy: (dashboard.overall_accuracy || 0) * 100,
+                    attempts: dashboard.total_attempts,
+                    xp: dashboard.xp,
+                }]);
             } catch (error) {
                 console.error('Failed to fetch progress data:', error);
             } finally {
@@ -95,11 +88,7 @@ export function ProgressCharts() {
         );
     }
 
-    const filteredHistory = timeRange === '7d'
-        ? progressHistory.slice(-7)
-        : timeRange === '30d'
-            ? progressHistory
-            : progressHistory;
+    const filteredHistory = progressHistory;
 
     // Prepare radar chart data (top skills)
     const radarData = skillData.slice(0, 6).map(s => ({
@@ -132,7 +121,7 @@ export function ProgressCharts() {
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
             >
-                <h3 className="text-lg font-semibold text-white mb-4">📈 Band Score Trend</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">Band Score Trend</h3>
                 <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={filteredHistory}>
@@ -174,7 +163,7 @@ export function ProgressCharts() {
                     transition={{ delay: 0.1 }}
                     className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
                 >
-                    <h3 className="text-lg font-semibold text-white mb-4">🎯 Accuracy Over Time</h3>
+                    <h3 className="text-lg font-semibold text-white mb-4">Accuracy Over Time</h3>
                     <div className="h-48">
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={filteredHistory}>
@@ -208,7 +197,7 @@ export function ProgressCharts() {
                     transition={{ delay: 0.2 }}
                     className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
                 >
-                    <h3 className="text-lg font-semibold text-white mb-4">📊 Daily Activity</h3>
+                    <h3 className="text-lg font-semibold text-white mb-4">Daily Activity</h3>
                     <div className="h-48">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={filteredHistory}>
@@ -238,7 +227,7 @@ export function ProgressCharts() {
                     transition={{ delay: 0.3 }}
                     className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
                 >
-                    <h3 className="text-lg font-semibold text-white mb-4">🎯 Skill Mastery Radar</h3>
+                    <h3 className="text-lg font-semibold text-white mb-4">Skill Mastery Radar</h3>
                     <div className="h-72">
                         <ResponsiveContainer width="100%" height="100%">
                             <RadarChart data={radarData}>
@@ -265,7 +254,7 @@ export function ProgressCharts() {
                 transition={{ delay: 0.4 }}
                 className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
             >
-                <h3 className="text-lg font-semibold text-white mb-4">⚡ XP Earned Per Day</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">XP Earned Per Day</h3>
                 <div className="h-48">
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={filteredHistory}>

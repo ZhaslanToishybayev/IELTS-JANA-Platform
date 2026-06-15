@@ -1,309 +1,377 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { useAuth } from '@/lib/auth';
-import { api } from '@/lib/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useRouter } from 'next/navigation';
+import { BookOpen, CheckCircle2, Headphones, Mic2, PenTool, Play, ShieldCheck } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
-// Mock Data for Sections (In real app, fetch from backend)
-const LISTENING_QUESTIONS = [
-    { id: 1, text: "What is the new address of the caller?", type: "MCQ", options: ["42 Oak Street", "78 Maple Avenue", "3B Maple Avenue"], answer: "78 Maple Avenue" },
-    { id: 2, text: "How much is the renewal fee?", type: "MCQ", options: ["$10", "$15", "$50"], answer: "$15" },
-    { id: 3, text: "When is the book due back?", type: "MCQ", options: ["Monday", "Thursday", "Saturday"], answer: "Thursday" }
-];
+type MockStatus = 'INTRO' | 'LISTENING' | 'READING' | 'WRITING' | 'SPEAKING' | 'COMPLETED';
 
-const READING_TEXT = `
-The history of the pencil begins in 1564, when a large deposit of graphite was discovered in Borrowdale, England. Locals found that the black substance was very useful for marking sheep. This deposit remains the only large scale deposit of graphite ever found in this solid form. 
-Chemistry was in its infancy and the substance was thought to be a form of lead. Consequently, it was called plumbago (Latin for 'lead ore'). This misperception remains to this day – we still talk about pencil 'leads', even though a pencil contains no lead at all.
-The graphite was cut into sticks and wrapped in string or sheepskin for stability. England would enjoy a monopoly on the production of pencils until a method of reconstituting graphite powder was found in 1662 in Germany. However, the distinctively square English pencils continued to be made with sticks of natural graphite into the 1860s.
-`;
+type MockQuestion = {
+    id: number;
+    text: string;
+    type: string;
+    options: string[] | null;
+    passage?: string;
+    passage_title?: string;
+    audio_url?: string | null;
+    section?: string | null;
+};
 
-const READING_QUESTIONS = [
-    { id: 1, text: "Where was the graphite deposit discovered?", type: "MCQ", options: ["Germany", "England", "USA"], answer: "England" },
-    { id: 2, text: "What was the original use of the graphite?", type: "MCQ", options: ["Writing letters", "Marking sheep", "Art"], answer: "Marking sheep" },
-    { id: 3, text: "Pencils contain lead.", type: "TF", options: ["True", "False", "Not Given"], answer: "False" }
-];
+const SECTION_SECONDS: Record<Exclude<MockStatus, 'INTRO' | 'COMPLETED'>, number> = {
+    LISTENING: 30 * 60,
+    READING: 60 * 60,
+    WRITING: 60 * 60,
+    SPEAKING: 14 * 60,
+};
+
+const WRITING_PROMPT = 'Some people believe that online learning can replace classroom learning. To what extent do you agree or disagree?';
+const SPEAKING_PROMPT = 'Part 2: Describe a skill you would like to learn. Explain what the skill is, why you want to learn it, and how it could help you in the future.';
 
 export default function MockExamPage() {
-    const { user } = useAuth();
+    const { user, token, loading } = useAuth();
     const router = useRouter();
-
-    const [status, setStatus] = useState<'INTRO' | 'LISTENING' | 'READING' | 'WRITING' | 'COMPLETED'>('INTRO');
+    const [status, setStatus] = useState<MockStatus>('INTRO');
     const [sessionId, setSessionId] = useState<string | null>(null);
-    const [timeLeft, setTimeLeft] = useState(0); // in seconds
-    const [answers, setAnswers] = useState<Record<string, any>>({});
-    const [writingText, setWritingText] = useState("");
-    const [results, setResults] = useState<any>(null);
+    const [timeLeft, setTimeLeft] = useState(0);
+    const [answers, setAnswers] = useState<Record<string, string>>({});
+    const [writingText, setWritingText] = useState('');
+    const [speakingText, setSpeakingText] = useState('');
+    const [listeningQuestions, setListeningQuestions] = useState<MockQuestion[]>([]);
+    const [readingQuestions, setReadingQuestions] = useState<MockQuestion[]>([]);
+    const [results, setResults] = useState<Awaited<ReturnType<typeof api.getMockResults>> | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    // Timer
     useEffect(() => {
-        if (!sessionId || status === 'COMPLETED' || status === 'INTRO') return;
-
-        const timer = setInterval(() => {
-            setTimeLeft((prev) => {
-                if (prev <= 1) {
-                    // Auto-submit section if time runs out
-                    handleSectionSubmit();
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(timer);
-    }, [sessionId, status]);
+        if (!loading && !user) router.push('/login');
+    }, [loading, router, user]);
 
     const formatTime = (seconds: number) => {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = seconds % 60;
-        return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
     const startTest = async () => {
-        try {
-            const token = user ? 'valid_token' : 'demo';
-            const res = await api.startMockExam(token);
-            setSessionId(res.id);
-            setStatus('LISTENING');
-            setTimeLeft(30 * 60); // 30 min for Listening
-        } catch (e) {
-            console.error(e);
-            alert("Failed to start session");
-        }
-    };
-
-    const handleSectionSubmit = async () => {
-        if (!sessionId) return;
+        if (!token) return;
         setIsSubmitting(true);
-        const token = user ? 'valid_token' : 'demo';
-
+        setError(null);
         try {
-            if (status === 'LISTENING') {
-                await api.submitMockListening(token, sessionId, answers);
-                setStatus('READING');
-                setTimeLeft(60 * 60); // 60 min
-                setAnswers({}); // Reset answer buffer for next section
-            } else if (status === 'READING') {
-                await api.submitMockReading(token, sessionId, answers);
-                setStatus('WRITING');
-                setTimeLeft(60 * 60); // 60 min
-                setAnswers({});
-            } else if (status === 'WRITING') {
-                await api.submitMockWriting(token, sessionId, writingText);
-                // Fetch results
-                const res = await api.getMockResults(token, sessionId);
-                setResults(res);
-                setStatus('COMPLETED');
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Error submitting section. Please try again.");
+            const session = await api.startMockExam(token);
+            const [listening, reading] = await Promise.all([
+                api.getMockQuestions(token, 'LISTENING', 12, session.id),
+                api.getMockQuestions(token, 'READING', 12, session.id),
+            ]);
+            setSessionId(session.id);
+            setListeningQuestions(listening.questions);
+            setReadingQuestions(reading.questions);
+            setAnswers({});
+            setStatus('LISTENING');
+            setTimeLeft(SECTION_SECONDS.LISTENING);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to start mock test');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    if (!user) return null;
+    const submitSection = useCallback(async () => {
+        if (!token || !sessionId || isSubmitting) return;
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            if (status === 'LISTENING') {
+                await api.submitMockListening(token, sessionId, answers);
+                setAnswers({});
+                setStatus('READING');
+                setTimeLeft(SECTION_SECONDS.READING);
+            } else if (status === 'READING') {
+                await api.submitMockReading(token, sessionId, answers);
+                setAnswers({});
+                setStatus('WRITING');
+                setTimeLeft(SECTION_SECONDS.WRITING);
+            } else if (status === 'WRITING') {
+                await api.submitMockWriting(token, sessionId, writingText);
+                setStatus('SPEAKING');
+                setTimeLeft(SECTION_SECONDS.SPEAKING);
+            } else if (status === 'SPEAKING') {
+                await api.submitMockSpeaking(token, sessionId, speakingText);
+                const finalResults = await api.getMockResults(token, sessionId);
+                setResults(finalResults);
+                setStatus('COMPLETED');
+                setTimeLeft(0);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Error submitting section');
+        } finally {
+            setIsSubmitting(false);
+        }
+    }, [answers, isSubmitting, sessionId, speakingText, status, token, writingText]);
+
+    useEffect(() => {
+        if (status === 'INTRO' || status === 'COMPLETED' || !sessionId) return;
+        const timer = setInterval(() => {
+            setTimeLeft((current) => {
+                if (current <= 1) {
+                    window.clearInterval(timer);
+                    submitSection();
+                    return 0;
+                }
+                return current - 1;
+            });
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, [sessionId, status, submitSection]);
+
+    const playListening = () => {
+        const transcript = listeningQuestions[0]?.passage || '';
+        if (!transcript || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(transcript);
+        utterance.rate = 0.92;
+        window.speechSynthesis.speak(utterance);
+    };
+
+    const currentQuestions = status === 'LISTENING' ? listeningQuestions : readingQuestions;
+    const answeredCount = useMemo(() => currentQuestions.filter((question) => answers[`q_${question.id}`]?.trim()).length, [answers, currentQuestions]);
+
+    if (loading || !user) return null;
 
     return (
-        <div className="min-h-screen bg-slate-900 text-white font-sans selection:bg-purple-500/30">
-            {/* Header / Timer */}
-            {status !== 'INTRO' && (
-                <div className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-white/10 px-6 py-4 flex justify-between items-center shadow-lg">
-                    <div className="font-bold text-xl tracking-tight">IELTS Mock Exam</div>
-                    <div className={`font-mono text-2xl font-bold px-4 py-1 rounded-lg ${timeLeft < 300 ? 'bg-red-500/20 text-red-400 animate-pulse' : 'bg-slate-800'}`}>
-                        {formatTime(timeLeft)}
+        <div className="py-6 space-y-6">
+            {status !== 'INTRO' && status !== 'COMPLETED' && (
+                <div className="card p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 sticky top-4 z-30">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">IELTS Mock Test</p>
+                        <h1 className="text-2xl font-black text-slate-900 dark:text-white">{status}</h1>
                     </div>
-                    <div className="text-sm text-white/50 uppercase tracking-widest font-semibold text-xs">
-                        {status} SECTION
+                    <div className="flex flex-wrap items-center gap-3">
+                        {(status === 'LISTENING' || status === 'READING') && (
+                            <span className="px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 font-black text-slate-600 dark:text-slate-300">
+                                {answeredCount}/{currentQuestions.length} answered
+                            </span>
+                        )}
+                        <span className={`px-4 py-2 rounded-xl font-mono font-black ${timeLeft < 300 ? 'bg-rose-50 text-rose-600' : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'}`}>
+                            {formatTime(timeLeft)}
+                        </span>
                     </div>
                 </div>
             )}
 
-            <main className="max-w-4xl mx-auto px-6 py-12">
+            {error && (
+                <div className="card p-4 border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 font-bold">
+                    {error}
+                </div>
+            )}
 
-                {status === 'INTRO' && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-center py-12"
-                    >
-                        <h1 className="text-5xl font-extrabold mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Full Mock Exam</h1>
-                        <p className="text-xl text-white/70 mb-12 max-w-2xl mx-auto leading-relaxed">
-                            You are about to start a complete simulation of the IELTS test.
-                            <br /><br />
-                            ⏱️ <strong className="text-white">Total Time:</strong> 2 hours 30 minutes<br />
-                            🚫 <strong className="text-white">No Pauses:</strong> Once started, the timer does not stop.<br />
-                            🎧 <strong className="text-white">Headphones:</strong> Required for listening section.
+            {status === 'INTRO' && (
+                <div className="card p-8 md:p-12 space-y-8">
+                    <div className="max-w-3xl">
+                        <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center mb-6">
+                            <ShieldCheck className="w-7 h-7" />
+                        </div>
+                        <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight mb-4">Full IELTS Mock Test</h1>
+                        <p className="text-lg text-slate-500 dark:text-slate-400 leading-relaxed">
+                            This run locks a real question set to your session, scores unanswered questions as wrong, records mistakes, and updates your progress.
                         </p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <SectionCard icon={Headphones} title="Listening" detail="30 minutes" />
+                        <SectionCard icon={BookOpen} title="Reading" detail="60 minutes" />
+                        <SectionCard icon={PenTool} title="Writing" detail="60 minutes" />
+                        <SectionCard icon={Mic2} title="Speaking" detail="14 minutes" />
+                    </div>
+                    <button
+                        onClick={startTest}
+                        disabled={isSubmitting}
+                        className="px-8 py-4 rounded-xl bg-blue-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-50"
+                    >
+                        {isSubmitting ? 'Starting...' : 'Start Test'}
+                    </button>
+                </div>
+            )}
 
-                        <button
-                            onClick={startTest}
-                            className="px-10 py-4 bg-white text-slate-900 rounded-full font-bold text-lg hover:scale-105 transition shadow-xl hover:shadow-2xl hover:shadow-white/20"
-                        >
-                            Start Exam Now
+            {status === 'LISTENING' && (
+                <SectionShell
+                    title="Listening Section"
+                    description="Play the audio once, then answer every question. Transcript is hidden during the test."
+                    action={(
+                        <button onClick={playListening} className="px-5 py-3 rounded-xl bg-blue-600 text-white font-black flex items-center gap-2">
+                            <Play className="w-4 h-4" />
+                            Play Audio
                         </button>
-                    </motion.div>
-                )}
+                    )}
+                >
+                    <QuestionList questions={listeningQuestions} answers={answers} setAnswers={setAnswers} />
+                    <SubmitButton label="Submit Listening" onClick={submitSection} disabled={isSubmitting || listeningQuestions.length === 0} />
+                </SectionShell>
+            )}
 
-                {status === 'LISTENING' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                        <div className="bg-white/5 p-6 rounded-2xl mb-8 border border-white/10 flex items-center gap-4">
-                            <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center text-xl">🎧</div>
-                            <div>
-                                <h2 className="text-xl font-bold">Listening Section</h2>
-                                <p className="text-white/60">Listen to the audio and answer the questions.</p>
-                            </div>
-                            <div className="ml-auto">
-                                <audio controls src="/audio/library_call.mp3" className="w-64" />
-                            </div>
-                        </div>
+            {status === 'READING' && (
+                <div className="grid grid-cols-1 xl:grid-cols-[1fr_520px] gap-6">
+                    <div className="card p-8 max-h-[calc(100vh-180px)] overflow-y-auto">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mb-3">Reading Passage</p>
+                        <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-6">{readingQuestions[0]?.passage_title || 'Passage'}</h2>
+                        <p className="text-slate-700 dark:text-slate-300 leading-8 whitespace-pre-line">{readingQuestions[0]?.passage || 'No passage available.'}</p>
+                    </div>
+                    <div className="space-y-5">
+                        <QuestionList questions={readingQuestions} answers={answers} setAnswers={setAnswers} />
+                        <SubmitButton label="Submit Reading" onClick={submitSection} disabled={isSubmitting || readingQuestions.length === 0} />
+                    </div>
+                </div>
+            )}
 
-                        <div className="space-y-6">
-                            {LISTENING_QUESTIONS.map((q) => (
-                                <div key={q.id} className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-                                    <p className="mb-4 font-medium text-lg">{q.id}. {q.text}</p>
-                                    <div className="space-y-2">
-                                        {q.options.map(opt => (
-                                            <label key={opt} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 cursor-pointer transition">
-                                                <input
-                                                    type="radio"
-                                                    name={`q-${q.id}`}
-                                                    value={opt}
-                                                    onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                                                    className="w-5 h-5 accent-purple-500"
-                                                />
-                                                <span className="text-white/80">{opt}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+            {status === 'WRITING' && (
+                <SectionShell title="Writing Task 2" description={WRITING_PROMPT}>
+                    <textarea
+                        value={writingText}
+                        onChange={(event) => setWritingText(event.target.value)}
+                        className="w-full min-h-[480px] card p-5 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500 leading-8"
+                        placeholder="Write your essay here..."
+                    />
+                    <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-500">{writingText.split(/\s+/).filter(Boolean).length} words</span>
+                        <SubmitButton label="Submit Writing" onClick={submitSection} disabled={isSubmitting} compact />
+                    </div>
+                </SectionShell>
+            )}
 
-                        <div className="mt-8 flex justify-end">
-                            <button
-                                onClick={handleSectionSubmit}
-                                disabled={isSubmitting}
-                                className="px-8 py-3 bg-purple-600 rounded-xl font-bold hover:bg-purple-500 transition"
-                            >
-                                {isSubmitting ? 'Submitting...' : 'Next Section →'}
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
+            {status === 'SPEAKING' && (
+                <SectionShell title="Speaking Simulation" description={SPEAKING_PROMPT}>
+                    <textarea
+                        value={speakingText}
+                        onChange={(event) => setSpeakingText(event.target.value)}
+                        className="w-full min-h-[320px] card p-5 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500 leading-8"
+                        placeholder="Record yourself externally or type a transcript of your answer here..."
+                    />
+                    <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-500">{speakingText.split(/\s+/).filter(Boolean).length} words</span>
+                        <SubmitButton label="Finish Test" onClick={submitSection} disabled={isSubmitting} compact />
+                    </div>
+                </SectionShell>
+            )}
 
-                {status === 'READING' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-[calc(100vh-200px)]">
-                            {/* Text Column - Scrollable */}
-                            <div className="bg-white/5 p-8 rounded-2xl border border-white/10 overflow-y-auto h-full">
-                                <h2 className="text-2xl font-bold mb-4 font-serif">The History of the Pencil</h2>
-                                <p className="text-white/80 leading-relaxed text-lg whitespace-pre-wrap font-serif">
-                                    {READING_TEXT}
-                                </p>
-                            </div>
-
-                            {/* Questions Column - Scrollable */}
-                            <div className="overflow-y-auto h-full space-y-6 pr-2">
-                                {READING_QUESTIONS.map((q) => (
-                                    <div key={q.id} className="bg-slate-800/50 p-6 rounded-xl border border-white/5">
-                                        <p className="mb-4 font-medium text-lg">{q.id}. {q.text}</p>
-                                        <div className="space-y-2">
-                                            {q.options.map(opt => (
-                                                <label key={opt} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 cursor-pointer transition">
-                                                    <input
-                                                        type="radio"
-                                                        name={`q-${q.id}`}
-                                                        value={opt}
-                                                        onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                                                        className="w-5 h-5 accent-emerald-500"
-                                                    />
-                                                    <span className="text-white/80">{opt}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-
-                                <div className="pt-4">
-                                    <button
-                                        onClick={handleSectionSubmit}
-                                        disabled={isSubmitting}
-                                        className="w-full px-8 py-4 bg-emerald-600 rounded-xl font-bold hover:bg-emerald-500 transition text-lg"
-                                    >
-                                        {isSubmitting ? 'Submitting...' : 'Finish Reading Section →'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-
-                {status === 'WRITING' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                        <div className="bg-white/5 p-6 rounded-2xl mb-6 border border-white/10">
-                            <h2 className="text-xl font-bold mb-2">Writing Task 2</h2>
-                            <p className="text-white/70 italic">
-                                "Technology is making communication easier but relationships weaker. To what extent do you agree or disagree?"
-                            </p>
-                        </div>
-
-                        <textarea
-                            value={writingText}
-                            onChange={(e) => setWritingText(e.target.value)}
-                            placeholder="Type your essay here..."
-                            className="w-full h-[60vh] bg-black/20 border border-white/10 rounded-xl p-6 text-lg text-white placeholder-white/30 focus:outline-none focus:border-amber-400 resize-none font-serif leading-relaxed"
-                        />
-
-                        <div className="mt-8 flex justify-between items-center">
-                            <div className="text-white/50">{writingText.split(/\s+/).filter(w => w).length} words</div>
-                            <button
-                                onClick={handleSectionSubmit}
-                                disabled={isSubmitting}
-                                className="px-8 py-3 bg-amber-600 rounded-xl font-bold hover:bg-amber-500 transition"
-                            >
-                                {isSubmitting ? 'Submitting...' : 'Finish Exam'}
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
-
-                {status === 'COMPLETED' && results && (
-                    <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-12">
-                        <div className="w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-6 shadow-2xl">
-                            🏆
-                        </div>
-                        <h2 className="text-4xl font-bold mb-2">Exam Completed!</h2>
-                        <p className="text-white/60 mb-12">Here is your estimated performance</p>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto mb-12">
-                            <div className="bg-white/10 p-6 rounded-2xl border border-white/10">
-                                <div className="text-sm text-white/50 mb-1">Overall Band</div>
-                                <div className="text-4xl font-bold text-white">{results.scores.overall}</div>
-                            </div>
-                            <div className="bg-white/5 p-6 rounded-2xl border border-white/5">
-                                <div className="text-sm text-white/50 mb-1">Listening</div>
-                                <div className="text-2xl font-bold text-purple-300">{results.scores.listening}</div>
-                            </div>
-                            <div className="bg-white/5 p-6 rounded-2xl border border-white/5">
-                                <div className="text-sm text-white/50 mb-1">Reading</div>
-                                <div className="text-2xl font-bold text-emerald-300">{results.scores.reading}</div>
-                            </div>
-                            <div className="bg-white/5 p-6 rounded-2xl border border-white/5">
-                                <div className="text-sm text-white/50 mb-1">Writing</div>
-                                <div className="text-2xl font-bold text-amber-300">{results.scores.writing}</div>
-                            </div>
-                        </div>
-
-                        <a href="/dashboard" className="text-white/50 hover:text-white underline underline-offset-4">Return to Dashboard</a>
-                    </motion.div>
-                )}
-
-            </main>
+            {status === 'COMPLETED' && results && (
+                <div className="card p-8 md:p-12 space-y-8">
+                    <div className="text-center">
+                        <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
+                        <h1 className="text-4xl font-black text-slate-900 dark:text-white">Mock Test Completed</h1>
+                        <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">Scores are deterministic from your submitted answers.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <ScoreCard title="Overall" value={results.scores.overall} />
+                        <ScoreCard title="Listening" value={results.scores.listening} detail={rawDetail(results.scores.listening_raw)} />
+                        <ScoreCard title="Reading" value={results.scores.reading} detail={rawDetail(results.scores.reading_raw)} />
+                        <ScoreCard title="Writing" value={results.scores.writing} detail={`${results.scores.writing_raw?.words ?? 0} words`} />
+                        <ScoreCard title="Speaking" value={results.scores.speaking} detail={`${results.scores.speaking_raw?.words ?? 0} words`} />
+                    </div>
+                    <div className="flex justify-center">
+                        <button onClick={() => router.push('/review')} className="px-6 py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-xs">
+                            Review Mistakes
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
+}
+
+function SectionShell({ title, description, action, children }: { title: string; description: string; action?: ReactNode; children: ReactNode }) {
+    return (
+        <div className="space-y-5">
+            <div className="card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">{title}</h2>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{description}</p>
+                </div>
+                {action}
+            </div>
+            {children}
+        </div>
+    );
+}
+
+function QuestionList({ questions, answers, setAnswers }: { questions: MockQuestion[]; answers: Record<string, string>; setAnswers: Dispatch<SetStateAction<Record<string, string>>> }) {
+    return (
+        <div className="space-y-4">
+            {questions.map((question, index) => (
+                <div key={question.id} className="card p-5 space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                        <h3 className="font-black text-slate-900 dark:text-white leading-snug">{index + 1}. {question.text}</h3>
+                        <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 text-[10px] font-black uppercase tracking-widest">
+                            {question.type}
+                        </span>
+                    </div>
+                    {question.options?.length ? (
+                        <div className="space-y-2">
+                            {question.options.map((option) => (
+                                <label key={option} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name={`q_${question.id}`}
+                                        value={option}
+                                        checked={answers[`q_${question.id}`] === option}
+                                        onChange={(event) => setAnswers((current) => ({ ...current, [`q_${question.id}`]: event.target.value }))}
+                                        className="w-4 h-4 accent-blue-600"
+                                    />
+                                    <span className="font-semibold text-slate-700 dark:text-slate-300">{option}</span>
+                                </label>
+                            ))}
+                        </div>
+                    ) : (
+                        <input
+                            value={answers[`q_${question.id}`] || ''}
+                            onChange={(event) => setAnswers((current) => ({ ...current, [`q_${question.id}`]: event.target.value }))}
+                            className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Type your answer"
+                        />
+                    )}
+                </div>
+            ))}
+            {questions.length === 0 && (
+                <div className="card p-8 text-center text-slate-500 font-bold">No approved questions available for this section.</div>
+            )}
+        </div>
+    );
+}
+
+function SubmitButton({ label, onClick, disabled, compact = false }: { label: string; onClick: () => void; disabled: boolean; compact?: boolean }) {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            className={`${compact ? 'px-6' : 'w-full'} py-4 rounded-xl bg-blue-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-50`}
+        >
+            {disabled ? 'Please wait...' : label}
+        </button>
+    );
+}
+
+function SectionCard({ icon: Icon, title, detail }: { icon: LucideIcon; title: string; detail: string }) {
+    return (
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 p-4">
+            <Icon className="w-5 h-5 text-blue-600 mb-3" />
+            <p className="font-black text-slate-900 dark:text-white">{title}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{detail}</p>
+        </div>
+    );
+}
+
+function ScoreCard({ title, value, detail }: { title: string; value: number; detail?: string }) {
+    return (
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 p-5 text-center">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">{title}</p>
+            <p className="text-3xl font-black text-slate-900 dark:text-white">{value || 0}</p>
+            {detail && <p className="text-xs font-bold text-slate-500 mt-2">{detail}</p>}
+        </div>
+    );
+}
+
+function rawDetail(raw?: { correct: number; total: number }) {
+    if (!raw) return '0/0 correct';
+    return `${raw.correct}/${raw.total} correct`;
 }

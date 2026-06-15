@@ -27,7 +27,9 @@ class AdaptiveSelector:
         self,
         db: Session,
         user_id: int,
-        preferred_category: Optional[str] = None
+        preferred_category: Optional[str] = None,
+        module: str = "READING",
+        question_type: Optional[str] = None,
     ) -> Tuple[Optional[Question], str, str]:
         """
         Select the next adaptive question for a user.
@@ -48,7 +50,9 @@ class AdaptiveSelector:
         mastery_map = {m.skill_id: m for m in masteries}
         
         # Get all skills
-        skills = db.query(Skill).all()
+        skills = db.query(Skill).filter(Skill.category.ilike(f"{module.upper()}%")).all()
+        if not skills:
+            skills = db.query(Skill).all()
         
         # Find target skill based on strategy
         target_skill, reason = self._select_target_skill(
@@ -75,7 +79,7 @@ class AdaptiveSelector:
         
         # Select question matching criteria
         question = self._select_question(
-            db, target_skill.id, target_difficulty, recent_ids
+            db, target_skill.id, target_difficulty, recent_ids, module, question_type
         )
         
         if question:
@@ -84,7 +88,9 @@ class AdaptiveSelector:
         # Fallback: any question from this skill
         question = db.query(Question).filter(
             Question.skill_id == target_skill.id,
+            Question.module == module.upper(),
             Question.is_active == True,
+            Question.approved == True,
             ~Question.id.in_(recent_ids) if recent_ids else True
         ).first()
         
@@ -93,7 +99,9 @@ class AdaptiveSelector:
         
         # Last resort: any active question
         question = db.query(Question).filter(
-            Question.is_active == True
+            Question.module == module.upper(),
+            Question.is_active == True,
+            Question.approved == True,
         ).order_by(func.random()).first()
         
         return question, target_skill.name if target_skill else "General", "No matching questions found"
@@ -188,16 +196,22 @@ class AdaptiveSelector:
         db: Session,
         skill_id: int,
         target_difficulty: int,
-        exclude_ids: List[int]
+        exclude_ids: List[int],
+        module: str,
+        question_type: Optional[str],
     ) -> Optional[Question]:
         """Select a question matching skill and difficulty criteria."""
         
         # Query for questions with matching difficulty (±2 range)
         query = db.query(Question).filter(
             Question.skill_id == skill_id,
+            Question.module == module.upper(),
             Question.is_active == True,
+            Question.approved == True,
             Question.difficulty.between(max(1, target_difficulty - 2), min(10, target_difficulty + 2))
         )
+        if question_type:
+            query = query.filter(Question.question_type == question_type)
         
         if exclude_ids:
             query = query.filter(~Question.id.in_(exclude_ids))

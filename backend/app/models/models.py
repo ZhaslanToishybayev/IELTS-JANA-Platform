@@ -60,9 +60,11 @@ class Question(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     skill_id = Column(Integer, ForeignKey("skills.id"), nullable=False)
+    test_set_id = Column(Integer, ForeignKey("test_sets.id"), nullable=True)
     
     # Module type: READING or LISTENING
     module = Column(String(20), default="READING", nullable=False)
+    section = Column(String(50), nullable=True)
     
     # Question content
     passage = Column(Text, nullable=True)  # Text for reading, transcript reference for listening
@@ -80,7 +82,11 @@ class Question(Base):
     
     # Difficulty and feedback
     difficulty = Column(Integer, default=5)  # 1-10 scale
+    estimated_band = Column(Float, nullable=True)
     explanation = Column(Text, nullable=True)
+    tags = Column(JSON, default=list)
+    needs_review = Column(Boolean, default=False)
+    approved = Column(Boolean, default=True)
     
     # Metadata
     created_at = Column(DateTime, server_default=func.now())
@@ -88,7 +94,30 @@ class Question(Base):
     
     # Relationships
     skill = relationship("Skill", back_populates="questions")
+    test_set = relationship("TestSet", back_populates="questions")
     attempts = relationship("Attempt", back_populates="question")
+
+
+class TestSet(Base):
+    """A grouped IELTS practice set, such as a reading passage or listening section."""
+    __tablename__ = "test_sets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    module = Column(String(20), nullable=False)
+    section = Column(String(50), nullable=True)
+    instructions = Column(Text, nullable=True)
+    passage = Column(Text, nullable=True)
+    audio_url = Column(String(500), nullable=True)
+    transcript = Column(Text, nullable=True)
+    source = Column(String(100), default="original")
+    estimated_band = Column(Float, nullable=True)
+    time_limit_minutes = Column(Integer, nullable=True)
+    needs_review = Column(Boolean, default=False)
+    approved = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    questions = relationship("Question", back_populates="test_set")
 
 
 class Attempt(Base):
@@ -113,6 +142,114 @@ class Attempt(Base):
     # Relationships
     user = relationship("User", back_populates="attempts")
     question = relationship("Question", back_populates="attempts")
+
+
+class WritingAttempt(Base):
+    """Stores IELTS writing submissions and criterion-level feedback."""
+    __tablename__ = "writing_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    task_type = Column(String(20), nullable=False)
+    prompt_text = Column(Text, nullable=False)
+    essay_text = Column(Text, nullable=False)
+    word_count = Column(Integer, default=0)
+    time_spent_sec = Column(Integer, nullable=True)
+    band_score = Column(Float, default=0.0)
+    criterion_scores = Column(JSON, default=dict)
+    feedback = Column(JSON, default=dict)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User", backref="writing_attempts")
+
+
+class SpeakingAttempt(Base):
+    """Stores IELTS speaking recordings/transcripts and criterion feedback."""
+    __tablename__ = "speaking_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    prompt_text = Column(Text, nullable=False)
+    audio_path = Column(String(500), nullable=True)
+    transcription = Column(Text, nullable=True)
+    time_spent_sec = Column(Integer, nullable=True)
+    band_score = Column(Float, default=0.0)
+    criterion_scores = Column(JSON, default=dict)
+    feedback = Column(JSON, default=dict)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User", backref="speaking_attempts")
+
+
+class WritingPrompt(Base):
+    """IELTS Writing Task 1/2 prompt bank."""
+    __tablename__ = "writing_prompts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_type = Column(String(20), nullable=False)
+    title = Column(String(255), nullable=False)
+    prompt_text = Column(Text, nullable=False)
+    category = Column(String(50), nullable=True)
+    word_limit = Column(Integer, default=250)
+    time_limit_minutes = Column(Integer, default=40)
+    tips = Column(JSON, default=list)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class SpeakingPrompt(Base):
+    """IELTS Speaking Part 1/2/3 prompt bank."""
+    __tablename__ = "speaking_prompts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    part = Column(String(20), nullable=False)
+    title = Column(String(255), nullable=False)
+    cue_card = Column(Text, nullable=True)
+    questions = Column(JSON, default=list)
+    prep_time_sec = Column(Integer, nullable=True)
+    speak_time_sec = Column(Integer, default=60)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class MistakeReview(Base):
+    """Persistent mistake log for review sessions."""
+    __tablename__ = "mistake_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    attempt_id = Column(Integer, ForeignKey("attempts.id"), nullable=True)
+    module = Column(String(20), nullable=False)
+    question_type = Column(String(50), nullable=False)
+    user_answer = Column(String(500), nullable=False)
+    correct_answer = Column(String(500), nullable=False)
+    explanation = Column(Text, nullable=True)
+    is_resolved = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User", backref="mistake_reviews")
+    question = relationship("Question")
+    attempt = relationship("Attempt")
+
+
+class StudyPlanItem(Base):
+    """Daily study recommendation generated from user performance."""
+    __tablename__ = "study_plan_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    module = Column(String(20), nullable=False)
+    mode = Column(String(50), nullable=False)
+    title = Column(String(255), nullable=False)
+    reason = Column(Text, nullable=True)
+    duration_minutes = Column(Integer, default=30)
+    priority = Column(Integer, default=1)
+    is_completed = Column(Boolean, default=False)
+    scheduled_for = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User", backref="study_plan_items")
 
 
 class UserSkillMastery(Base):
