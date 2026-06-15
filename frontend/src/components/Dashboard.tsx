@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { api, type TodayPlan } from '@/lib/api';
+import { api, type DiagnosticResult, type DiagnosticStatus, type TodayPlan } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
     ProgressRing,
@@ -54,6 +54,8 @@ export function Dashboard() {
     const { token } = useAuth();
     const [data, setData] = useState<DashboardData | null>(null);
     const [todayPlan, setTodayPlan] = useState<TodayPlan | null>(null);
+    const [diagnosticStatus, setDiagnosticStatus] = useState<DiagnosticStatus | null>(null);
+    const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
     const [planError, setPlanError] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -69,9 +71,10 @@ export function Dashboard() {
             setError(null);
             setPlanError(null);
 
-            const [dashboardResult, planResult] = await Promise.allSettled([
+            const [dashboardResult, planResult, diagnosticStatusResult] = await Promise.allSettled([
                 api.getDashboard(authToken),
                 api.getTodayPlan(authToken),
+                api.getDiagnosticStatus(authToken),
             ]);
 
             if (cancelled) return;
@@ -88,6 +91,19 @@ export function Dashboard() {
             } else {
                 console.error(planResult.reason);
                 setPlanError("Today's plan is temporarily unavailable.");
+            }
+
+            if (diagnosticStatusResult.status === 'fulfilled') {
+                setDiagnosticStatus(diagnosticStatusResult.value);
+                if (diagnosticStatusResult.value.completed) {
+                    try {
+                        setDiagnosticResult(await api.getDiagnosticResult(authToken));
+                    } catch (diagnosticError) {
+                        console.error(diagnosticError);
+                    }
+                }
+            } else {
+                console.error(diagnosticStatusResult.reason);
             }
 
             setLoading(false);
@@ -140,6 +156,12 @@ export function Dashboard() {
     };
 
     const todayPlanCtaHref = todayPlan?.tasks.find((task) => task.href)?.href || '/practice';
+    const diagnosticWeakest = diagnosticResult?.weak_skills[0];
+    const diagnosticCtaHref = diagnosticStatus?.completed
+        ? diagnosticWeakest
+            ? `/practice?module=READING&question_type=${encodeURIComponent(diagnosticWeakest.category)}`
+            : '/review'
+        : '/diagnostic';
 
     return (
         <div className="py-6 space-y-8">
@@ -227,6 +249,47 @@ export function Dashboard() {
                     <BandScoreDisplay band={data.estimated_band} />
                 </div>
             </div>
+
+            {/* Reading Diagnostic */}
+            {diagnosticStatus && (
+                <div className="card p-5 !rounded-2xl">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="w-11 h-11 bg-slate-900 dark:bg-white rounded-xl flex items-center justify-center text-white dark:text-slate-900">
+                                <BookOpen className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 dark:text-white">
+                                    {diagnosticStatus.completed ? 'Diagnostic completed' : 'Complete your Reading Diagnostic'}
+                                </h2>
+                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">
+                                    {diagnosticStatus.completed
+                                        ? diagnosticWeakest
+                                            ? `Weakest Reading skill: ${diagnosticWeakest.skill_name}`
+                                            : `Accuracy: ${Math.round((diagnosticResult?.accuracy || 0) * 100)}%`
+                                        : `${diagnosticStatus.answered}/${diagnosticStatus.target} questions completed`}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                            {!diagnosticStatus.completed && (
+                                <div className="w-full sm:w-40 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-blue-600"
+                                        style={{ width: `${Math.min((diagnosticStatus.answered / diagnosticStatus.target) * 100, 100)}%` }}
+                                    />
+                                </div>
+                            )}
+                            <Link href={diagnosticCtaHref} className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl px-5 py-3 text-sm font-black hover:bg-blue-700 transition">
+                                {diagnosticStatus.completed
+                                    ? diagnosticWeakest ? 'Practice weakest skill' : 'Review mistakes'
+                                    : 'Start diagnostic'}
+                                <ArrowRight className="w-4 h-4" />
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Today's Plan */}
             <div className="card p-6 !rounded-2xl overflow-hidden">

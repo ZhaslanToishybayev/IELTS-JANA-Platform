@@ -59,6 +59,50 @@ export interface ReviewMistakeFilters {
     resolved?: 'false' | 'true' | 'all';
 }
 
+export interface DiagnosticQuestion {
+    id: number;
+    skill_id: number;
+    passage: string;
+    passage_title: string | null;
+    question_text: string;
+    question_type: string;
+    options: string[] | null;
+    difficulty: number;
+}
+
+export interface DiagnosticStatus {
+    completed: boolean;
+    answered: number;
+    target: number;
+    remaining: number;
+    recommended: boolean;
+}
+
+export interface DiagnosticNext {
+    question: DiagnosticQuestion;
+    target_skill: string;
+    reason: string;
+    session_progress: number;
+}
+
+export interface DiagnosticWeakSkill {
+    skill_id: number;
+    skill_name: string;
+    category: string;
+    mastery_probability: number;
+    accuracy_rate: number;
+    attempts_count: number;
+}
+
+export interface DiagnosticResult {
+    completed: boolean;
+    answered: number;
+    accuracy: number;
+    estimated_reading_band: number;
+    weak_skills: DiagnosticWeakSkill[];
+    recommendation: string;
+}
+
 interface FetchOptions extends RequestInit {
     token?: string;
 }
@@ -226,6 +270,18 @@ class ApiClient {
 
     async getTodayPlan(token: string) {
         return this.fetch<TodayPlan>('/plan/today', { token });
+    }
+
+    async getDiagnosticStatus(token: string) {
+        return this.fetch<DiagnosticStatus>('/diagnostic/status', { token });
+    }
+
+    async getDiagnosticNext(token: string) {
+        return this.fetch<DiagnosticNext>('/diagnostic/next', { token });
+    }
+
+    async getDiagnosticResult(token: string) {
+        return this.fetch<DiagnosticResult>('/diagnostic/result', { token });
     }
 
     async getContentTests(token: string, module?: string) {
