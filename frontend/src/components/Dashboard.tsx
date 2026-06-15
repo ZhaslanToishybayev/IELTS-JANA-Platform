@@ -139,6 +139,8 @@ export function Dashboard() {
         'LISTENING_NOTES': 'Listening - Note Taking',
     };
 
+    const todayPlanCtaHref = todayPlan?.tasks.find((task) => task.href)?.href || '/practice';
+
     return (
         <div className="py-6 space-y-8">
             {/* Page Title */}
@@ -280,7 +282,7 @@ export function Dashboard() {
                                 <span className="text-sm font-black text-blue-700 dark:text-blue-300">+{todayPlan.reward.xp} XP</span>
                             </div>
                         )}
-                        <Link href="/practice" className="inline-flex items-center justify-center gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl px-5 py-3 text-sm font-black hover:opacity-95 transition">
+                        <Link href={todayPlanCtaHref} className="inline-flex items-center justify-center gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl px-5 py-3 text-sm font-black hover:opacity-95 transition">
                             Start today&apos;s plan
                             <ArrowRight className="w-4 h-4" />
                         </Link>

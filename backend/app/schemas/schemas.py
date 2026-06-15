@@ -197,6 +197,7 @@ class TodayPlanFocusSkill(BaseModel):
 
 class TodayPlanTask(BaseModel):
     type: str
+    module: Optional[str] = None
     label: str
     target: int
     href: str

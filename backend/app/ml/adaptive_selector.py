@@ -2,11 +2,11 @@
 
 from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
-from datetime import datetime, timedelta
+from sqlalchemy import func
 import random
 
 from ..models import Question, Attempt, UserSkillMastery, Skill
+from ..services.module_skills import get_categories_for_module, normalize_module
 from .knowledge_tracing import knowledge_tracer
 
 
@@ -42,6 +42,8 @@ class AdaptiveSelector:
         Returns:
             Tuple of (Question, target_skill_name, selection_reason)
         """
+        normalized_module = normalize_module(module)
+
         # Get user's skill masteries
         masteries = db.query(UserSkillMastery).filter(
             UserSkillMastery.user_id == user_id
@@ -49,8 +51,24 @@ class AdaptiveSelector:
         
         mastery_map = {m.skill_id: m for m in masteries}
         
-        # Get all skills
-        skills = db.query(Skill).filter(Skill.category.ilike(f"{module.upper()}%")).all()
+        categories = get_categories_for_module(normalized_module)
+        skills = []
+        if categories:
+            skills = db.query(Skill).filter(Skill.category.in_(categories)).all()
+
+        if not skills:
+            skills = (
+                db.query(Skill)
+                .join(Question, Question.skill_id == Skill.id)
+                .filter(
+                    Question.module == normalized_module,
+                    Question.is_active == True,
+                    Question.approved == True,
+                )
+                .distinct()
+                .all()
+            )
+
         if not skills:
             skills = db.query(Skill).all()
         
@@ -79,7 +97,7 @@ class AdaptiveSelector:
         
         # Select question matching criteria
         question = self._select_question(
-            db, target_skill.id, target_difficulty, recent_ids, module, question_type
+            db, target_skill.id, target_difficulty, recent_ids, normalized_module, question_type
         )
         
         if question:
@@ -88,7 +106,7 @@ class AdaptiveSelector:
         # Fallback: any question from this skill
         question = db.query(Question).filter(
             Question.skill_id == target_skill.id,
-            Question.module == module.upper(),
+            Question.module == normalized_module,
             Question.is_active == True,
             Question.approved == True,
             ~Question.id.in_(recent_ids) if recent_ids else True
@@ -97,12 +115,29 @@ class AdaptiveSelector:
         if question:
             return question, target_skill.name, f"{reason} (difficulty fallback)"
         
-        # Last resort: any active question
-        question = db.query(Question).filter(
-            Question.module == module.upper(),
+        # Last resort: any active question for the requested module. If this
+        # switches skills, return that question's skill name to avoid a mismatch.
+        question_query = db.query(Question).filter(
+            Question.module == normalized_module,
             Question.is_active == True,
             Question.approved == True,
-        ).order_by(func.random()).first()
+        )
+
+        question = None
+        if categories:
+            question = (
+                question_query.join(Skill)
+                .filter(Skill.category.in_(categories))
+                .order_by(func.random())
+                .first()
+            )
+
+        if not question:
+            question = question_query.order_by(func.random()).first()
+
+        if question and question.skill_id != target_skill.id:
+            question_skill = db.query(Skill).filter(Skill.id == question.skill_id).first()
+            return question, question_skill.name if question_skill else "General", "No matching questions found"
         
         return question, target_skill.name if target_skill else "General", "No matching questions found"
     
@@ -205,7 +240,7 @@ class AdaptiveSelector:
         # Query for questions with matching difficulty (±2 range)
         query = db.query(Question).filter(
             Question.skill_id == skill_id,
-            Question.module == module.upper(),
+            Question.module == normalize_module(module),
             Question.is_active == True,
             Question.approved == True,
             Question.difficulty.between(max(1, target_difficulty - 2), min(10, target_difficulty + 2))

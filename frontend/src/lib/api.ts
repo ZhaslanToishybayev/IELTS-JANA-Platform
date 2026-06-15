@@ -11,9 +11,10 @@ export interface TodayPlan {
     } | null;
     tasks: {
         type: string;
+        module?: string;
         label: string;
         target: number;
-        href: string;
+        href?: string;
     }[];
     reason: string;
     reward: {
