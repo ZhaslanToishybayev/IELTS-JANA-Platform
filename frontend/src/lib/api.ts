@@ -23,6 +23,42 @@ export interface TodayPlan {
     };
 }
 
+export interface ReviewMistake {
+    id: number;
+    module: string;
+    question_type: string;
+    question_text: string;
+    passage_title: string | null;
+    passage_excerpt: string | null;
+    user_answer: string;
+    correct_answer: string;
+    explanation: string | null;
+    created_at: string;
+    question_id: number;
+    is_resolved: boolean;
+    skill: {
+        id: number;
+        name: string;
+        category: string;
+    } | null;
+}
+
+export interface ReviewSummary {
+    total_unresolved: number;
+    by_module: Record<string, number>;
+    by_question_type: {
+        question_type: string;
+        count: number;
+    }[];
+}
+
+export interface ReviewMistakeFilters {
+    module?: string;
+    question_type?: string;
+    limit?: number;
+    resolved?: 'false' | 'true' | 'all';
+}
+
 interface FetchOptions extends RequestInit {
     token?: string;
 }
@@ -159,18 +195,22 @@ class ApiClient {
         }>(`/practice/next?${params.toString()}`, { token });
     }
 
-    async getMistakes(token: string, module?: string) {
-        const params = module ? `?module=${module}` : '';
-        return this.fetch<{ mistakes: {
-            id: number;
-            module: string;
-            question_type: string;
-            question_text: string;
-            user_answer: string;
-            correct_answer: string;
-            explanation: string | null;
-            created_at: string;
-        }[] }>(`/review/mistakes${params}`, { token });
+    async getMistakes(token: string, filters?: string | ReviewMistakeFilters) {
+        const params = new URLSearchParams();
+        if (typeof filters === 'string') {
+            params.set('module', filters);
+        } else if (filters) {
+            if (filters.module) params.set('module', filters.module);
+            if (filters.question_type) params.set('question_type', filters.question_type);
+            if (filters.limit) params.set('limit', String(filters.limit));
+            if (filters.resolved) params.set('resolved', filters.resolved);
+        }
+        const query = params.toString() ? `?${params.toString()}` : '';
+        return this.fetch<{ mistakes: ReviewMistake[] }>(`/review/mistakes${query}`, { token });
+    }
+
+    async getReviewSummary(token: string) {
+        return this.fetch<ReviewSummary>('/review/summary', { token });
     }
 
     async resolveMistake(token: string, mistakeId: number) {
