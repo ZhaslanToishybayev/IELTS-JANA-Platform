@@ -54,7 +54,17 @@ interface PracticeState {
     startTime: number;
 }
 
-export function ReadingPractice() {
+interface ReadingPracticeProps {
+    initialModule?: string;
+    initialMode?: string;
+    initialQuestionType?: string;
+}
+
+export function ReadingPractice({
+    initialModule = 'READING',
+    initialMode = 'weakness',
+    initialQuestionType,
+}: ReadingPracticeProps) {
     const { token, updateUser } = useAuth();
     const { playSuccess, playError } = useSoundEffects();
     const [state, setState] = useState<PracticeState>({
@@ -71,8 +81,15 @@ export function ReadingPractice() {
     const [showXP, setShowXP] = useState(false);
     const [showLevelUp, setShowLevelUp] = useState(false);
     const [elapsedTime, setElapsedTime] = useState(0);
-    const [mode, setMode] = useState('weakness');
-    const [questionType, setQuestionType] = useState<string | undefined>(undefined);
+    const [practiceModule, setPracticeModule] = useState(initialModule.toUpperCase());
+    const [mode, setMode] = useState(initialMode);
+    const [questionType, setQuestionType] = useState<string | undefined>(initialQuestionType);
+
+    useEffect(() => {
+        setPracticeModule(initialModule.toUpperCase());
+        setMode(initialMode);
+        setQuestionType(initialQuestionType);
+    }, [initialModule, initialMode, initialQuestionType]);
 
     const fetchNextQuestion = useCallback(async () => {
         if (!token) return;
@@ -80,7 +97,7 @@ export function ReadingPractice() {
         setState(prev => ({ ...prev, loading: true }));
 
         try {
-            const data = await api.getNextPractice(token, 'READING', mode, questionType);
+            const data = await api.getNextPractice(token, practiceModule, mode, questionType);
             setState({
                 question: data.question,
                 targetSkill: data.target_skill,
@@ -97,7 +114,7 @@ export function ReadingPractice() {
             console.error('Failed to fetch question:', error);
             setState(prev => ({ ...prev, loading: false }));
         }
-    }, [token, mode, questionType]);
+    }, [token, practiceModule, mode, questionType]);
 
     useEffect(() => {
         fetchNextQuestion();
@@ -226,7 +243,7 @@ export function ReadingPractice() {
                             <ArrowLeft className="w-5 h-5" />
                         </Link>
                         <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                            Reading Practice
+                            {practiceModule === 'READING' ? 'Reading Practice' : `${practiceModule} Practice`}
                         </h1>
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${difficulty.color}`}>
                             {difficulty.label}
