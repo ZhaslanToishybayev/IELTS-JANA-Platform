@@ -5,16 +5,11 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from ..database import get_db
-from ..models import User, Question, Attempt, UserSkillMastery, Skill, MistakeReview
+from ..models import User, Question, Attempt, Skill
 from ..schemas import AttemptCreate, AttemptResponse, NextQuestionResponse, QuestionResponse
 from ..routers.auth import get_current_user
-from ..ml import knowledge_tracer, adaptive_selector
-from ..services import (
-    calculate_xp_for_attempt, update_user_xp, update_streak,
-    check_and_unlock_skills
-)
-from ..services.dashboard import update_daily_metrics
-from ..services.scoring import answer_matches
+from ..ml import adaptive_selector
+from ..services.attempts import submit_question_attempt
 
 router = APIRouter(prefix="/questions", tags=["Questions"])
 
@@ -81,116 +76,7 @@ async def submit_answer(
     - Updated user stats
     - Explanation if incorrect
     """
-    # Get the question
-    question = db.query(Question).filter(Question.id == attempt_data.question_id).first()
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found"
-        )
-    
-    # Check if answer is correct
-    is_correct = answer_matches(attempt_data.user_answer, question.correct_answer)
-    
-    # Update streak
-    new_streak = update_streak(db, current_user)
-    
-    # Calculate XP
-    xp_earned = calculate_xp_for_attempt(
-        difficulty=question.difficulty,
-        is_correct=is_correct,
-        streak=new_streak
-    )
-    
-    # Update user XP and level
-    new_xp, new_level, level_up = update_user_xp(db, current_user, xp_earned)
-    
-    # Get or create skill mastery record
-    mastery = db.query(UserSkillMastery).filter(
-        UserSkillMastery.user_id == current_user.id,
-        UserSkillMastery.skill_id == question.skill_id
-    ).first()
-    
-    if not mastery:
-        skill = db.query(Skill).filter(Skill.id == question.skill_id).first()
-        mastery = UserSkillMastery(
-            user_id=current_user.id,
-            skill_id=question.skill_id,
-            is_unlocked=skill.parent_skill_id is None if skill else True
-        )
-        db.add(mastery)
-        db.flush()
-    
-    # Update mastery using BKT
-    old_mastery = mastery.mastery_probability
-    new_mastery = knowledge_tracer.update_mastery(old_mastery, is_correct)
-    mastery.mastery_probability = new_mastery
-    mastery.attempts_count += 1
-    if is_correct:
-        mastery.correct_count += 1
-    
-    # Update average response time
-    if mastery.avg_response_time_ms:
-        mastery.avg_response_time_ms = (
-            mastery.avg_response_time_ms * (mastery.attempts_count - 1) + 
-            attempt_data.response_time_ms
-        ) / mastery.attempts_count
-    else:
-        mastery.avg_response_time_ms = attempt_data.response_time_ms
-    
-    mastery.last_attempt_at = datetime.now()
-    
-    # Create attempt record
-    attempt = Attempt(
-        user_id=current_user.id,
-        question_id=question.id,
-        user_answer=attempt_data.user_answer,
-        is_correct=is_correct,
-        response_time_ms=attempt_data.response_time_ms,
-        xp_earned=xp_earned
-    )
-    db.add(attempt)
-    db.flush()
-
-    if not is_correct:
-        db.add(MistakeReview(
-            user_id=current_user.id,
-            question_id=question.id,
-            attempt_id=attempt.id,
-            module=question.module,
-            question_type=question.question_type,
-            user_answer=attempt_data.user_answer,
-            correct_answer=question.correct_answer,
-            explanation=question.explanation,
-        ))
-    
-    # Check for skill unlocks
-    check_and_unlock_skills(db, current_user.id)
-    
-    # Update daily metrics
-    db.commit()
-    update_daily_metrics(db, current_user.id)
-    
-    db.refresh(attempt)
-    
-    mastery_change = new_mastery - old_mastery
-    
-    return AttemptResponse(
-        id=attempt.id,
-        question_id=attempt.question_id,
-        user_answer=attempt.user_answer,
-        is_correct=attempt.is_correct,
-        response_time_ms=attempt.response_time_ms,
-        xp_earned=attempt.xp_earned,
-        created_at=attempt.created_at,
-        correct_answer=question.correct_answer,
-        explanation=question.explanation if not is_correct else None,
-        new_xp=new_xp,
-        new_level=new_level,
-        level_up=level_up,
-        new_streak=new_streak,
-        mastery_change=mastery_change
-    )
+    return submit_question_attempt(db, current_user, attempt_data)
 
 
 @router.get("/categories")

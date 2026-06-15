@@ -127,6 +127,7 @@ class Attempt(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    diagnostic_session_id = Column(Integer, ForeignKey("diagnostic_sessions.id"), nullable=True)
     
     # Attempt data
     user_answer = Column(String(500), nullable=False)
@@ -142,6 +143,26 @@ class Attempt(Base):
     # Relationships
     user = relationship("User", back_populates="attempts")
     question = relationship("Question", back_populates="attempts")
+    diagnostic_session = relationship("DiagnosticSession", back_populates="attempts")
+
+
+class DiagnosticSession(Base):
+    """Persisted Reading diagnostic lifecycle and result snapshot."""
+    __tablename__ = "diagnostic_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    module = Column(String(20), default="READING", nullable=False)
+    target_questions = Column(Integer, default=10, nullable=False)
+    status = Column(String(20), default="in_progress", nullable=False)
+    started_at = Column(DateTime, server_default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+    accuracy = Column(Float, nullable=True)
+    estimated_band = Column(Float, nullable=True)
+    result_snapshot = Column(JSON, nullable=True)
+
+    user = relationship("User", backref="diagnostic_sessions")
+    attempts = relationship("Attempt", back_populates="diagnostic_session")
 
 
 class WritingAttempt(Base):
