@@ -22,8 +22,10 @@ export function LoginForm() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [demoLoading, setDemoLoading] = useState(false);
     const { login, signup } = useAuth();
     const router = useRouter();
+    const demoLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === 'true';
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -45,6 +47,20 @@ export function LoginForm() {
         }
     };
 
+    const handleDemoLogin = async () => {
+        setError('');
+        setDemoLoading(true);
+
+        try {
+            await login('demo@ieltsjana.local', 'DemoPass123');
+            router.push('/dashboard');
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Demo account is not ready. Run the demo seed script first.');
+        } finally {
+            setDemoLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row">
             {/* Left Side: Branding & Features (hidden on mobile) */}
@@ -61,7 +77,7 @@ export function LoginForm() {
                         Master your IELTS Reading with AI.
                     </h1>
                     <p className="text-blue-100 text-xl max-w-lg leading-relaxed">
-                        The world's most adaptive preparation platform. Personalized to your level and goals.
+                        Take a short diagnostic, find weak Reading question types, and follow a practical daily plan.
                     </p>
                 </div>
 
@@ -103,7 +119,7 @@ export function LoginForm() {
                             {isLogin ? 'Welcome back' : 'Create an account'}
                         </h2>
                         <p className="text-slate-500 dark:text-slate-400">
-                            {isLogin ? 'Log in to continue your progress' : 'Join thousands of students worldwide'}
+                            {isLogin ? 'Log in to continue your progress' : 'Start your personalized IELTS Reading prep journey'}
                         </p>
                     </div>
 
@@ -206,7 +222,7 @@ export function LoginForm() {
 
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || demoLoading}
                             className={`w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100 ${loading ? 'cursor-not-allowed' : ''
                                 }`}
                         >
@@ -219,17 +235,35 @@ export function LoginForm() {
                                 </>
                             )}
                         </button>
+
+                        {isLogin && demoLoginEnabled && (
+                            <button
+                                type="button"
+                                onClick={handleDemoLogin}
+                                disabled={loading || demoLoading}
+                                className="w-full py-3 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold rounded-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100"
+                            >
+                                {demoLoading ? (
+                                    <div className="w-5 h-5 border-2 border-slate-400/30 border-t-slate-700 dark:border-slate-500/30 dark:border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <>
+                                        Try demo account
+                                        <Sparkles className="w-4 h-4" />
+                                    </>
+                                )}
+                            </button>
+                        )}
                     </form>
 
                     <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-900 flex items-center justify-center gap-6">
                         <div className="text-center">
-                            <h4 className="font-bold text-slate-900 dark:text-white">10k+</h4>
-                            <p className="text-xs text-slate-500">Active Students</p>
+                            <h4 className="font-bold text-slate-900 dark:text-white">10</h4>
+                            <p className="text-xs text-slate-500">Diagnostic Questions</p>
                         </div>
                         <div className="w-px h-8 bg-slate-100 dark:bg-slate-900" />
                         <div className="text-center">
-                            <h4 className="font-bold text-slate-900 dark:text-white">8.0+</h4>
-                            <p className="text-xs text-slate-500">Avg. Band Score</p>
+                            <h4 className="font-bold text-slate-900 dark:text-white">7</h4>
+                            <p className="text-xs text-slate-500">Reading Skills</p>
                         </div>
                     </div>
                 </motion.div>
