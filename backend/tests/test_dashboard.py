@@ -47,6 +47,18 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
 
+    def test_api_health_check(self, client):
+        """Test deployment health check includes service and DB status."""
+        response = client.get("/api/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["service"] == "ielts-jana-api"
+        assert data["database"] == "ok"
+        assert data["version"] == "1.0.0"
+        assert "environment" in data
+
 
 class TestRootEndpoint:
     """Test cases for root API endpoint."""

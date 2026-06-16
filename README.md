@@ -37,6 +37,13 @@ python check_content_coverage.py
 uvicorn app.main:app --reload --port 8000
 ```
 
+Production ASGI start example:
+
+```bash
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
 ### Database Migrations
 
 Alembic is the preferred schema management path for local development and
@@ -120,6 +127,18 @@ Before deploying a public environment:
 - Run Alembic migrations with `cd backend && alembic upgrade head`.
 - Seed demo data only for demo environments, not real production.
 - Never commit real secrets or provider keys.
+
+### Deployment
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for backend/frontend environment
+variables, migration commands, health checks, and suggested hosting options.
+Production database examples use PostgreSQL via `psycopg`; local SQLite
+development remains unchanged.
+
+### CI
+
+GitHub Actions runs backend tests plus `compileall`, and frontend build plus
+lint, on pull requests and pushes to `master`.
 
 ## 🎮 Features
 

@@ -86,6 +86,14 @@ def test_production_secret_validation():
     Settings(environment="production", secret_key="a-strong-production-secret-value").validate_production_safety()
 
 
+def test_auto_create_tables_disabled_in_production():
+    assert Settings(environment="development").auto_create_tables is True
+    assert Settings(
+        environment="production",
+        secret_key="a-strong-production-secret-value",
+    ).auto_create_tables is False
+
+
 @pytest.mark.parametrize("url", [
     "http://localhost/admin",
     "http://127.0.0.1/admin",
