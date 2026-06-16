@@ -139,6 +139,8 @@ development remains unchanged.
 
 GitHub Actions runs backend tests plus `compileall`, and frontend build plus
 lint, on pull requests and pushes to `master`.
+CI also runs a PostgreSQL migration smoke check to catch production database
+issues early.
 
 ## 🎮 Features
 

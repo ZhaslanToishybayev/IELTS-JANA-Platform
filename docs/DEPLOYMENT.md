@@ -58,6 +58,21 @@ cd backend
 alembic upgrade head
 ```
 
+## PostgreSQL Migration Smoke Check
+
+SQLite remains the default for local development. PostgreSQL is recommended for
+production, and CI runs a PostgreSQL migration smoke check so migration issues
+are caught before deployment.
+
+```bash
+cd backend
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DB_NAME alembic upgrade head
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DB_NAME python check_postgres_migrations.py
+```
+
+The check runs Alembic to `head`, verifies the database revision, and never
+drops tables, seeds demo data, or prints credentials.
+
 For demo environments only, seed original demo content and the demo learner:
 
 ```bash
