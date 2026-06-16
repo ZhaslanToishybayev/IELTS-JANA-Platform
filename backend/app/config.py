@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.environment.strip().lower() == "production"
 
+    @property
+    def auto_create_tables(self) -> bool:
+        return not self.is_production
+
     def validate_production_safety(self) -> None:
         if self.is_production and self.secret_key.strip() in UNSAFE_SECRET_VALUES:
             raise RuntimeError(

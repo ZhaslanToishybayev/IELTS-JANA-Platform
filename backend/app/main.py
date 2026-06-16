@@ -2,6 +2,8 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from .database import engine, Base
 from .routers import (
@@ -36,9 +38,10 @@ app.add_middleware(
 # Setup rate limiting
 setup_rate_limiter(app)
 
-# Keep local startup forgiving, but use Alembic for intentional schema changes:
+# Keep local startup forgiving. Production must use Alembic migrations:
 #   cd backend && alembic upgrade head
-Base.metadata.create_all(bind=engine)
+if settings.auto_create_tables:
+    Base.metadata.create_all(bind=engine)
 
 # Include routers
 app.include_router(auth_router, prefix="/api")
@@ -77,3 +80,25 @@ async def root():
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.get("/api/health")
+async def api_health_check():
+    """Deployment health check with a lightweight database probe."""
+    database_status = "ok"
+    status_code = 200
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        database_status = "unavailable"
+        status_code = 503
+
+    payload = {
+        "status": "ok" if database_status == "ok" else "error",
+        "service": "ielts-jana-api",
+        "environment": settings.environment,
+        "database": database_status,
+        "version": app.version,
+    }
+    return JSONResponse(status_code=status_code, content=payload)
