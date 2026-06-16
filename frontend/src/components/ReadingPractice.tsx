@@ -296,9 +296,11 @@ export function ReadingPractice({
                         [undefined, 'All'],
                         ['TF_NG', 'TF/NG'],
                         ['HEADINGS', 'Headings'],
-                        ['MATCHING', 'Matching'],
                         ['SUMMARY', 'Summary'],
+                        ['MATCHING_INFO', 'Matching Info'],
+                        ['SENTENCE_COMP', 'Sentence Completion'],
                         ['MCQ', 'MCQ'],
+                        ['FILL_BLANK', 'Fill Blank'],
                     ].map(([value, label]) => (
                         <button
                             key={label}
