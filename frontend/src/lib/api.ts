@@ -76,6 +76,8 @@ export interface DiagnosticStatus {
     target: number;
     remaining: number;
     recommended: boolean;
+    session_id: number | null;
+    status: string | null;
 }
 
 export interface DiagnosticNext {
@@ -101,6 +103,38 @@ export interface DiagnosticResult {
     estimated_reading_band: number;
     weak_skills: DiagnosticWeakSkill[];
     recommendation: string;
+    session_id: number | null;
+    status: string | null;
+}
+
+export interface DiagnosticStart {
+    session_id: number;
+    module: string;
+    status: string;
+    target: number;
+    answered: number;
+    completed: boolean;
+}
+
+export interface DiagnosticSubmitResult {
+    id: number;
+    question_id: number;
+    user_answer: string;
+    is_correct: boolean;
+    response_time_ms: number;
+    xp_earned: number;
+    correct_answer: string;
+    explanation: string | null;
+    new_xp: number;
+    new_level: number;
+    level_up: boolean;
+    new_streak: number;
+    mastery_change: number;
+    session_id: number;
+    diagnostic_completed: boolean;
+    completed: boolean;
+    answered: number;
+    target: number;
 }
 
 interface FetchOptions extends RequestInit {
@@ -276,8 +310,28 @@ class ApiClient {
         return this.fetch<DiagnosticStatus>('/diagnostic/status', { token });
     }
 
+    async startDiagnostic(token: string, restart = false) {
+        const params = restart ? '?restart=true' : '';
+        return this.fetch<DiagnosticStart>(`/diagnostic/start${params}`, {
+            method: 'POST',
+            token,
+        });
+    }
+
     async getDiagnosticNext(token: string) {
         return this.fetch<DiagnosticNext>('/diagnostic/next', { token });
+    }
+
+    async submitDiagnosticAnswer(token: string, questionId: number, answer: string, responseTimeMs: number) {
+        return this.fetch<DiagnosticSubmitResult>('/diagnostic/submit', {
+            method: 'POST',
+            token,
+            body: JSON.stringify({
+                question_id: questionId,
+                user_answer: answer,
+                response_time_ms: responseTimeMs,
+            }),
+        });
     }
 
     async getDiagnosticResult(token: string) {

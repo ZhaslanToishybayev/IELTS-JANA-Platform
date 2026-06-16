@@ -82,11 +82,38 @@ export default function DiagnosticPage() {
         }
     };
 
+    const startDiagnostic = async (restart = false) => {
+        if (!token) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const session = await api.startDiagnostic(token, restart);
+            const diagnosticStatus = await api.getDiagnosticStatus(token);
+            setStatus(diagnosticStatus);
+            setResult(null);
+            setStarted(true);
+            if (session.completed) {
+                await loadResult(token);
+            } else {
+                const next = await api.getDiagnosticNext(token);
+                setCurrent(next);
+                setSelectedAnswer('');
+                setFeedback(null);
+                setStartTime(Date.now());
+            }
+        } catch (err) {
+            console.error(err);
+            setError('Unable to start your diagnostic right now.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const submitAnswer = async () => {
         if (!token || !current || !selectedAnswer.trim()) return;
         setError(null);
         try {
-            const submitted = await api.submitAnswer(
+            const submitted = await api.submitDiagnosticAnswer(
                 token,
                 current.question.id,
                 selectedAnswer.trim(),
@@ -222,6 +249,9 @@ export default function DiagnosticPage() {
                         <Link href={weakestHref} className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
                             Practice weakest skill
                         </Link>
+                        <button onClick={() => startDiagnostic(true)} className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                            Retake diagnostic
+                        </button>
                     </div>
                 </div>
             </div>
@@ -263,7 +293,7 @@ export default function DiagnosticPage() {
                         </div>
                     </div>
 
-                    <button onClick={fetchNextQuestion} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl px-6 py-4 text-sm font-black hover:bg-blue-700 transition">
+                    <button onClick={() => startDiagnostic()} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl px-6 py-4 text-sm font-black hover:bg-blue-700 transition">
                         {answered > 0 ? 'Resume diagnostic' : 'Start diagnostic'}
                         <ArrowRight className="w-4 h-4" />
                     </button>
