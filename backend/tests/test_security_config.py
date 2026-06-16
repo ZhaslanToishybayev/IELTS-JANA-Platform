@@ -1,0 +1,117 @@
+"""Security and production configuration tests."""
+
+import socket
+
+import pytest
+
+from app.config import Settings, get_settings, parse_csv_setting
+from app.models import User
+from app.services.url_safety import validate_public_http_url
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    yield
+    get_settings.cache_clear()
+
+
+def _signup_and_login(client, email: str, username: str, password: str = "TestPass123") -> str:
+    client.post("/api/auth/signup", json={"email": email, "username": username, "password": password})
+    response = client.post("/api/auth/login/json", json={"email": email, "password": password})
+    return response.json()["access_token"]
+
+
+def test_admin_denies_normal_user(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAILS", "")
+    get_settings.cache_clear()
+    token = _signup_and_login(client, "normal@example.com", "normaluser")
+
+    response = client.get("/api/admin/dashboard", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 403
+
+
+def test_admin_denies_high_level_user(client, db, monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAILS", "")
+    get_settings.cache_clear()
+    token = _signup_and_login(client, "level50@example.com", "leveluser")
+    user = db.query(User).filter(User.email == "level50@example.com").one()
+    user.level = 99
+    db.commit()
+
+    response = client.get("/api/admin/dashboard", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 403
+
+
+def test_admin_allows_configured_email(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAILS", "admin@example.com")
+    get_settings.cache_clear()
+    token = _signup_and_login(client, "admin@example.com", "adminuser")
+
+    response = client.get("/api/admin/dashboard", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+
+
+def test_admin_email_matching_trims_whitespace_and_ignores_case(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAILS", " owner@example.com , Admin@Example.com ")
+    get_settings.cache_clear()
+    token = _signup_and_login(client, "admin@example.com", "caseadmin")
+
+    response = client.get("/api/admin/dashboard", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+
+
+def test_csv_config_parsing_trims_empty_values():
+    assert parse_csv_setting(" http://a.test, ,http://b.test ") == ["http://a.test", "http://b.test"]
+    assert Settings(backend_cors_origins=" http://localhost:3000, https://example.com ").cors_origins == [
+        "http://localhost:3000",
+        "https://example.com",
+    ]
+
+
+def test_production_secret_validation():
+    Settings(environment="development").validate_production_safety()
+
+    with pytest.raises(RuntimeError, match="SECRET_KEY must be set"):
+        Settings(
+            environment="production",
+            secret_key="unsafe-development-secret-key-change-me",
+        ).validate_production_safety()
+
+    Settings(environment="production", secret_key="a-strong-production-secret-value").validate_production_safety()
+
+
+@pytest.mark.parametrize("url", [
+    "http://localhost/admin",
+    "http://127.0.0.1/admin",
+    "http://10.0.0.5/admin",
+    "file:///etc/passwd",
+    "",
+])
+def test_url_safety_blocks_internal_or_invalid_urls(url):
+    with pytest.raises(ValueError):
+        validate_public_http_url(url)
+
+
+def test_url_safety_allows_public_https_url(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *args, **kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+    ])
+
+    assert validate_public_http_url("https://example.com/article") == "https://example.com/article"
+
+
+def test_generator_endpoint_returns_400_for_blocked_url(client):
+    token = _signup_and_login(client, "generator-owner@example.com", "generatorowner")
+
+    response = client.post(
+        "/api/generator/reading",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"url": "http://127.0.0.1/admin", "difficulty": 5},
+    )
+
+    assert response.status_code == 400
+    assert "private or internal" in response.json()["detail"]

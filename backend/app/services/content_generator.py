@@ -5,6 +5,7 @@ import google.generativeai as genai
 import os
 import json
 from typing import List, Dict, Any
+from .url_safety import validate_public_http_url
 
 # Configure Gemini
 api_key = os.getenv("GEMINI_API_KEY")
@@ -20,10 +21,11 @@ class ContentGenerator:
         Fetches and cleans text content from a given URL.
         """
         try:
+            safe_url = validate_public_http_url(url)
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(safe_url, headers=headers, timeout=10)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -43,6 +45,8 @@ class ContentGenerator:
             # Limit length to avoid token limits (approx 2000 words is safe for standard IELTS reading)
             return clean_text[:10000] 
             
+        except ValueError:
+            raise
         except Exception as e:
             raise Exception(f"Failed to fetch content: {str(e)}")
 

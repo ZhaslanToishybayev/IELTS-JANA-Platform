@@ -108,6 +108,19 @@ npm run dev
 - **Frontend**: http://localhost:3000
 - **API Docs**: http://localhost:8000/docs
 
+### Production Safety Checklist
+
+Before deploying a public environment:
+
+- Set `ENVIRONMENT=production`.
+- Set a strong unique `SECRET_KEY`; never use the development default.
+- Configure `BACKEND_CORS_ORIGINS` with the exact frontend domains.
+- Configure `ADMIN_EMAILS` with explicit admin account emails.
+- Keep `NEXT_PUBLIC_ENABLE_DEMO_LOGIN=false` unless intentionally showing a demo.
+- Run Alembic migrations with `cd backend && alembic upgrade head`.
+- Seed demo data only for demo environments, not real production.
+- Never commit real secrets or provider keys.
+
 ## 🎮 Features
 
 ### AI-Driven Reading Practice
