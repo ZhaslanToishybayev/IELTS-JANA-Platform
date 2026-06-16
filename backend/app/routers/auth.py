@@ -1,7 +1,7 @@
 """Authentication API router with email verification and password reset."""
 
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -18,6 +18,7 @@ from ..services.email_service import (
 )
 from ..services.auth import get_password_hash, validate_user_password
 from ..models import User
+from ..middleware.rate_limiter import AUTH_LIMIT, SIGNUP_LIMIT, limiter
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -65,7 +66,9 @@ async def get_current_user(
 
 
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(SIGNUP_LIMIT)
 async def signup(
+    request: Request,
     user_data: UserCreate, 
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
@@ -88,7 +91,9 @@ async def signup(
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit(AUTH_LIMIT)
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -112,7 +117,8 @@ async def login(
 
 
 @router.post("/login/json", response_model=Token)
-async def login_json(credentials: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit(AUTH_LIMIT)
+async def login_json(request: Request, credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate user with JSON body and return JWT token."""
     user = authenticate_user(db, credentials.email, credentials.password)
     if not user:

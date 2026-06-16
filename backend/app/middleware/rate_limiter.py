@@ -5,6 +5,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from fastapi import Request
+from ..config import get_settings
 
 
 def get_user_identifier(request: Request) -> str:
@@ -21,13 +22,15 @@ limiter = Limiter(
     key_func=get_user_identifier,
     default_limits=["200/minute"],  # Default limit for all endpoints
     storage_uri="memory://",  # Use in-memory storage, can switch to Redis
+    enabled=get_settings().rate_limit_enabled,
 )
 
 # Rate limit decorators for specific routes
 # Usage: @limiter.limit("5/minute")
 
 # Define common rate limits
-AUTH_LIMIT = "10/minute"  # Strict limit for auth endpoints
+SIGNUP_LIMIT = "5/minute"
+AUTH_LIMIT = "10/minute"  # Strict limit for login endpoints
 API_LIMIT = "100/minute"  # Normal limit for API endpoints
 HEAVY_LIMIT = "20/minute"  # Limit for heavy operations (AI, etc.)
 

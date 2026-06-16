@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import case, func
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from ..database import get_db
 from ..models import User, Question, Skill, Achievement, UserAchievement, Attempt, TestSet
 from ..routers.auth import get_current_user
+from ..config import get_settings
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -81,16 +82,10 @@ class ImportTestSet(BaseModel):
 
 async def require_admin(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
-    """Check if user has admin privileges (level 50+ or specific flag)."""
-    # Local-first rule: the first single-user installation can manage its own content.
-    is_first_local_user = db.query(User).count() <= 1
-    if (
-        current_user.level < 50
-        and current_user.email not in ["admin@ielts-jana.com"]
-        and not is_first_local_user
-    ):
+    """Allow admin access only for explicitly configured admin emails."""
+    settings = get_settings()
+    if current_user.email.strip().lower() not in settings.admin_email_set:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
@@ -127,7 +122,7 @@ async def admin_dashboard(
     total_attempts = db.query(Attempt).count()
     attempts_today = db.query(Attempt).filter(Attempt.created_at >= today).count()
     avg_accuracy = db.query(func.avg(
-        func.case((Attempt.is_correct, 1), else_=0)
+        case((Attempt.is_correct, 1), else_=0)
     )).scalar() or 0
     
     # Achievement stats

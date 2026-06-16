@@ -13,8 +13,10 @@ from .routers import (
     prompts_router, plan_router, diagnostic_router
 )
 from .middleware.rate_limiter import setup_rate_limiter
+from .config import get_settings
 
 # Create FastAPI app
+settings = get_settings()
 app = FastAPI(
     title="IELTS JANA",
     description="Gamified AI-powered IELTS Reading preparation platform",
@@ -23,17 +25,9 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Configure CORS for frontend
-# In production, this should be set to the actual domain
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://ielts-jana.vercel.app",  # Production domain
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],  # Explicit methods instead of *
     allow_headers=["Authorization", "Content-Type"],  # Explicit headers
