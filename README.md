@@ -27,6 +27,9 @@ alembic upgrade head
 # Seed the database with sample questions when needed
 python seed_ielts_v1.py
 
+# Optional: seed a realistic local demo learner profile
+python seed_demo_user.py
+
 # Check Reading diagnostic/practice content readiness
 python check_content_coverage.py
 
@@ -57,6 +60,32 @@ cd backend
 alembic upgrade head
 python seed_ielts_v1.py
 python check_content_coverage.py
+```
+
+### Demo Setup
+
+For portfolio review, diploma presentation, or first user testing, seed the
+original demo content and the demo learner account:
+
+```bash
+cd backend
+alembic upgrade head
+python seed_ielts_v1.py
+python seed_demo_user.py
+python check_content_coverage.py
+```
+
+The demo user uses normal authentication, not a backend bypass:
+
+```text
+email: demo@ieltsjana.local
+password: DemoPass123
+```
+
+To show the frontend demo login button, add this to `frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true
 ```
 
 `backend/migrate_local_schema.py` is kept only as a legacy best-effort helper for
