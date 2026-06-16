@@ -1,4 +1,6 @@
 from functools import lru_cache
+from urllib.parse import urlparse
+
 from pydantic_settings import BaseSettings
 
 
@@ -14,6 +16,11 @@ UNSAFE_SECRET_VALUES = {
 def parse_csv_setting(value: str) -> list[str]:
     """Parse comma-separated environment values while trimming empty entries."""
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def is_postgres_url(database_url: str) -> bool:
+    """Return true for SQLAlchemy PostgreSQL database URLs."""
+    return urlparse(database_url).scheme in {"postgresql", "postgresql+psycopg"}
 
 
 class Settings(BaseSettings):

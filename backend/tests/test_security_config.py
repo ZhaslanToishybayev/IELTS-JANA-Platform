@@ -5,7 +5,7 @@ import socket
 import pytest
 import requests
 
-from app.config import Settings, get_settings, parse_csv_setting
+from app.config import Settings, get_settings, is_postgres_url, parse_csv_setting
 from app.models import User
 from app.services.content_generator import generator
 from app.services.url_safety import validate_public_http_url
@@ -72,6 +72,12 @@ def test_csv_config_parsing_trims_empty_values():
         "http://localhost:3000",
         "https://example.com",
     ]
+
+
+def test_database_url_postgres_classification():
+    assert is_postgres_url("postgresql+psycopg://postgres:postgres@localhost:5432/jana_test") is True
+    assert is_postgres_url("postgresql://postgres:postgres@localhost:5432/jana_test") is True
+    assert is_postgres_url("sqlite:///./jana.db") is False
 
 
 def test_production_secret_validation():
