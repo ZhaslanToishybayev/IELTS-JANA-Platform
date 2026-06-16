@@ -28,7 +28,8 @@ Required production values:
 
 - `ENVIRONMENT=production`
 - `SECRET_KEY` set to a strong random value
-- `DATABASE_URL` pointing at the production database
+- `DATABASE_URL` pointing at the production database. The production examples
+  assume PostgreSQL through SQLAlchemy's `postgresql+psycopg://` driver URL.
 - `BACKEND_CORS_ORIGINS` set to exact frontend origins
 - `ADMIN_EMAILS` set to explicit admin account emails
 - `RATE_LIMIT_ENABLED=true`

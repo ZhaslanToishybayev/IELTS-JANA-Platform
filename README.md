@@ -132,6 +132,8 @@ Before deploying a public environment:
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for backend/frontend environment
 variables, migration commands, health checks, and suggested hosting options.
+Production database examples use PostgreSQL via `psycopg`; local SQLite
+development remains unchanged.
 
 ### CI
 
