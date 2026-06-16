@@ -5,6 +5,8 @@ import google.generativeai as genai
 import os
 import json
 from typing import List, Dict, Any
+from urllib.parse import urljoin
+
 from .url_safety import validate_public_http_url
 
 # Configure Gemini
@@ -16,16 +18,46 @@ class ContentGenerator:
     def __init__(self):
         self.model = genai.GenerativeModel('gemini-1.5-flash')
 
+    def safe_get_public_url(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        timeout: int = 10,
+        max_redirects: int = 3,
+    ) -> requests.Response:
+        """
+        Fetch a public URL while validating every redirect target before following it.
+        """
+        current_url = validate_public_http_url(url)
+
+        for _ in range(max_redirects + 1):
+            response = requests.get(
+                current_url,
+                headers=headers,
+                timeout=timeout,
+                allow_redirects=False,
+            )
+            if not response.is_redirect:
+                return response
+
+            location = response.headers.get("Location")
+            if not location:
+                return response
+
+            redirect_url = urljoin(current_url, location)
+            current_url = validate_public_http_url(redirect_url)
+
+        raise ValueError("Too many redirects.")
+
     def fetch_article_content(self, url: str) -> str:
         """
         Fetches and cleans text content from a given URL.
         """
         try:
-            safe_url = validate_public_http_url(url)
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
-            response = requests.get(safe_url, headers=headers, timeout=10)
+            response = self.safe_get_public_url(url, headers=headers, timeout=10)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')

@@ -3,9 +3,11 @@
 import socket
 
 import pytest
+import requests
 
 from app.config import Settings, get_settings, parse_csv_setting
 from app.models import User
+from app.services.content_generator import generator
 from app.services.url_safety import validate_public_http_url
 
 
@@ -104,6 +106,90 @@ def test_url_safety_allows_public_https_url(monkeypatch):
     assert validate_public_http_url("https://example.com/article") == "https://example.com/article"
 
 
+def _mock_response(status_code: int = 200, location: str | None = None, body: bytes = b"ok") -> requests.Response:
+    response = requests.Response()
+    response.status_code = status_code
+    response._content = body
+    response.url = location or "https://example.com/article"
+    if location:
+        response.headers["Location"] = location
+    return response
+
+
+def _public_dns(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *args, **kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+    ])
+
+
+def test_safe_get_public_url_does_not_follow_redirects_automatically(monkeypatch):
+    _public_dns(monkeypatch)
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return _mock_response()
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    generator.safe_get_public_url("https://example.com/article")
+
+    assert calls[0][1]["allow_redirects"] is False
+
+
+def test_safe_get_public_url_blocks_redirect_to_localhost(monkeypatch):
+    _public_dns(monkeypatch)
+    monkeypatch.setattr(requests, "get", lambda *args, **kwargs: _mock_response(
+        status_code=302,
+        location="http://127.0.0.1/admin",
+    ))
+
+    with pytest.raises(ValueError, match="private or internal"):
+        generator.safe_get_public_url("https://example.com/article")
+
+
+def test_safe_get_public_url_blocks_redirect_to_metadata_ip(monkeypatch):
+    _public_dns(monkeypatch)
+    monkeypatch.setattr(requests, "get", lambda *args, **kwargs: _mock_response(
+        status_code=302,
+        location="http://169.254.169.254/latest/meta-data",
+    ))
+
+    with pytest.raises(ValueError, match="private or internal"):
+        generator.safe_get_public_url("https://example.com/article")
+
+
+def test_safe_get_public_url_allows_redirect_to_public_url(monkeypatch):
+    _public_dns(monkeypatch)
+    responses = [
+        _mock_response(status_code=302, location="https://example.org/final"),
+        _mock_response(status_code=200, body=b"<html>final</html>"),
+    ]
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        return responses.pop(0)
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    response = generator.safe_get_public_url("https://example.com/article")
+
+    assert response.status_code == 200
+    assert calls == ["https://example.com/article", "https://example.org/final"]
+
+
+def test_safe_get_public_url_redirect_loop_returns_clear_error(monkeypatch):
+    _public_dns(monkeypatch)
+    monkeypatch.setattr(requests, "get", lambda *args, **kwargs: _mock_response(
+        status_code=302,
+        location="/loop",
+    ))
+
+    with pytest.raises(ValueError, match="Too many redirects."):
+        generator.safe_get_public_url("https://example.com/article", max_redirects=1)
+
+
 def test_generator_endpoint_returns_400_for_blocked_url(client):
     token = _signup_and_login(client, "generator-owner@example.com", "generatorowner")
 
@@ -111,6 +197,24 @@ def test_generator_endpoint_returns_400_for_blocked_url(client):
         "/api/generator/reading",
         headers={"Authorization": f"Bearer {token}"},
         json={"url": "http://127.0.0.1/admin", "difficulty": 5},
+    )
+
+    assert response.status_code == 400
+    assert "private or internal" in response.json()["detail"]
+
+
+def test_generator_endpoint_returns_400_for_redirect_to_localhost(client, monkeypatch):
+    _public_dns(monkeypatch)
+    token = _signup_and_login(client, "redirect-owner@example.com", "redirectowner")
+    monkeypatch.setattr(requests, "get", lambda *args, **kwargs: _mock_response(
+        status_code=302,
+        location="http://127.0.0.1/admin",
+    ))
+
+    response = client.post(
+        "/api/generator/reading",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"url": "https://example.com/article", "difficulty": 5},
     )
 
     assert response.status_code == 400
