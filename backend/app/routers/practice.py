@@ -36,6 +36,11 @@ async def get_next_practice(
         question_type=question_type,
     )
     if not question:
+        if module.upper() == "READING":
+            raise HTTPException(
+                status_code=404,
+                detail="No Reading questions are available for this focus yet. Add active approved Reading questions or seed demo content.",
+            )
         raise HTTPException(status_code=404, detail="No approved questions available")
 
     today_attempts = db.query(Attempt).filter(

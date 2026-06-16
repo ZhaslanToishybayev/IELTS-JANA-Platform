@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import TestSet
 from ..routers.auth import get_current_user
+from ..services.content_coverage import get_reading_category_coverage
 
 router = APIRouter(prefix="/content", tags=["Content"])
 
@@ -34,3 +35,12 @@ async def list_tests(
             for item in tests
         ]
     }
+
+
+@router.get("/reading/coverage")
+async def get_reading_coverage(
+    minimum_per_category: int = 2,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return get_reading_category_coverage(db, minimum_per_category)

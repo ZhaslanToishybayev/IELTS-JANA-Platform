@@ -84,6 +84,9 @@ export function ReadingPractice({
     const [practiceModule, setPracticeModule] = useState(initialModule.toUpperCase());
     const [mode, setMode] = useState(initialMode);
     const [questionType, setQuestionType] = useState<string | undefined>(initialQuestionType);
+    const [noQuestionMessage, setNoQuestionMessage] = useState(
+        'No Reading questions are available for this focus yet. Try another type or seed more demo content.'
+    );
 
     useEffect(() => {
         setPracticeModule(initialModule.toUpperCase());
@@ -98,6 +101,7 @@ export function ReadingPractice({
 
         try {
             const data = await api.getNextPractice(token, practiceModule, mode, questionType);
+            setNoQuestionMessage('No Reading questions are available for this focus yet. Try another type or seed more demo content.');
             setState({
                 question: data.question,
                 targetSkill: data.target_skill,
@@ -112,6 +116,7 @@ export function ReadingPractice({
             setElapsedTime(0);
         } catch (error) {
             console.error('Failed to fetch question:', error);
+            setNoQuestionMessage(error instanceof Error ? error.message : 'No Reading questions are available for this focus yet. Try another type or seed more demo content.');
             setState(prev => ({ ...prev, loading: false }));
         }
     }, [token, practiceModule, mode, questionType]);
@@ -220,7 +225,7 @@ export function ReadingPractice({
                     <div>
                         <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">No Challenges Found</h2>
                         <p className="text-slate-500 dark:text-slate-400">
-                            We couldn&apos;t find any new questions for your current level. Try changing your focus or checking back later.
+                            {noQuestionMessage}
                         </p>
                     </div>
                     <Link href="/dashboard" className="btn-primary block w-full text-center">
