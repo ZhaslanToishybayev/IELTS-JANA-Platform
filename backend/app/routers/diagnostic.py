@@ -324,7 +324,10 @@ async def get_diagnostic_next(
     if not question:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No Reading diagnostic questions available",
+            detail=(
+                "Reading diagnostic content is not ready yet. Add active approved "
+                "Reading questions across IELTS Reading categories."
+            ),
         )
 
     answered = _answered_count(db, session)

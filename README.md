@@ -27,6 +27,9 @@ alembic upgrade head
 # Seed the database with sample questions when needed
 python seed_ielts_v1.py
 
+# Check Reading diagnostic/practice content readiness
+python check_content_coverage.py
+
 # Start the API server
 uvicorn app.main:app --reload --port 8000
 ```
@@ -44,7 +47,17 @@ alembic upgrade head
 Use `alembic upgrade head` after pulling model or migration changes, before
 running seed scripts, and before starting the backend against a fresh database.
 For content, run seed scripts such as `python seed_ielts_v1.py` after the schema
-is current.
+is current. The IELTS v1 seed content is original IELTS-style demo material for
+local development and QA; it is not official IELTS content.
+
+To verify Reading diagnostic and practice readiness locally:
+
+```bash
+cd backend
+alembic upgrade head
+python seed_ielts_v1.py
+python check_content_coverage.py
+```
 
 `backend/migrate_local_schema.py` is kept only as a legacy best-effort helper for
 old local SQLite databases when Alembic cannot be run. New schema changes should

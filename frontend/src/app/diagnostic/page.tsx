@@ -13,6 +13,8 @@ type SubmitFeedback = {
     explanation: string | null;
 };
 
+const DIAGNOSTIC_CONTENT_ERROR = 'Reading diagnostic content is not ready yet. Please seed demo content or add approved Reading questions.';
+
 export default function DiagnosticPage() {
     const { token, user, loading: authLoading, updateUser } = useAuth();
     const router = useRouter();
@@ -76,7 +78,7 @@ export default function DiagnosticPage() {
             setStartTime(Date.now());
         } catch (err) {
             console.error(err);
-            setError('No Reading diagnostic questions are available yet.');
+            setError(DIAGNOSTIC_CONTENT_ERROR);
         } finally {
             setLoading(false);
         }
@@ -103,7 +105,10 @@ export default function DiagnosticPage() {
             }
         } catch (err) {
             console.error(err);
-            setError('Unable to start your diagnostic right now.');
+            const message = err instanceof Error && err.message.includes('Reading diagnostic content')
+                ? DIAGNOSTIC_CONTENT_ERROR
+                : 'Unable to start your diagnostic right now.';
+            setError(message);
         } finally {
             setLoading(false);
         }

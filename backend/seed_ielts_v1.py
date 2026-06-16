@@ -12,12 +12,13 @@ Base.metadata.create_all(bind=engine)
 
 
 READING_SKILLS = [
-    ("Reading True/False/Not Given", "READING_TF_NG"),
-    ("Reading Headings", "READING_HEADINGS"),
-    ("Reading Matching Information", "READING_MATCHING"),
-    ("Reading Sentence Completion", "READING_SENTENCE"),
-    ("Reading Summary Completion", "READING_SUMMARY"),
-    ("Reading Multiple Choice", "READING_MCQ"),
+    ("Reading True/False/Not Given", "TF_NG"),
+    ("Reading Headings", "HEADINGS"),
+    ("Reading Summary Completion", "SUMMARY"),
+    ("Reading Matching Information", "MATCHING_INFO"),
+    ("Reading Sentence Completion", "SENTENCE_COMP"),
+    ("Reading Multiple Choice", "MCQ"),
+    ("Reading Fill in the Blank", "FILL_BLANK"),
 ]
 
 LISTENING_SKILLS = [
@@ -54,9 +55,20 @@ LISTENING_TOPICS = [
 
 
 def get_or_create_skill(db, name, category):
+    skill = db.query(Skill).filter(Skill.category == category).first()
+    if skill:
+        if skill.name != name:
+            skill.name = name
+        if not skill.description:
+            skill.description = f"IELTS skill: {name}"
+        return skill
+
     skill = db.query(Skill).filter(Skill.name == name).first()
     if skill:
+        skill.category = category
+        skill.description = f"IELTS skill: {name}"
         return skill
+
     skill = Skill(name=name, category=category, description=f"IELTS skill: {name}", mastery_threshold=0.7)
     db.add(skill)
     db.flush()
@@ -66,8 +78,7 @@ def get_or_create_skill(db, name, category):
 def seed_reading(db, skills):
     created = 0
     for index, (title, subject, benefit, audience, year, percent) in enumerate(READING_TOPICS, start=1):
-        if db.query(TestSet).filter(TestSet.title == title, TestSet.module == "READING").first():
-            continue
+        test_set = db.query(TestSet).filter(TestSet.title == title, TestSet.module == "READING").first()
         passage = (
             f"{title} have become a focus of urban research. The passage describes how {subject} "
             f"can support {benefit} while serving {audience}. A pilot project began in {year} and "
@@ -76,33 +87,47 @@ def seed_reading(db, skills):
             f"helped collect data. The most successful sites combined expert planning with community "
             f"maintenance, rather than relying only on technology."
         )
-        test_set = TestSet(
-            title=title,
-            module="READING",
-            section=f"Passage {((index - 1) % 3) + 1}",
-            passage=passage,
-            source="original",
-            estimated_band=5.5 + (index % 4) * 0.5,
-            time_limit_minutes=20,
-            approved=True,
-        )
-        db.add(test_set)
-        db.flush()
+        if not test_set:
+            test_set = TestSet(
+                title=title,
+                module="READING",
+                section=f"Passage {((index - 1) % 3) + 1}",
+                passage=passage,
+                source="original",
+                estimated_band=5.5 + (index % 4) * 0.5,
+                time_limit_minutes=20,
+                approved=True,
+            )
+            db.add(test_set)
+            db.flush()
         templates = [
-            (skills["READING_TF_NG"], "TF_NG", f"{title} are discussed as an urban research focus.", ["True", "False", "Not Given"], "True"),
-            (skills["READING_TF_NG"], "TF_NG", f"The pilot project began in {str(int(year) + 2)}.", ["True", "False", "Not Given"], "False"),
-            (skills["READING_TF_NG"], "TF_NG", f"The passage states that the project was funded by an international bank.", ["True", "False", "Not Given"], "Not Given"),
-            (skills["READING_HEADINGS"], "HEADINGS", "Choose the best heading for the passage.", ["Community involvement in a practical research project", "A history of private banking", "The decline of scientific planning", "A guide to laboratory safety"], "Community involvement in a practical research project"),
-            (skills["READING_MATCHING"], "MATCHING", f"Which group benefited directly from {subject}?", [audience, "foreign tourists", "factory owners", "professional athletes"], audience),
-            (skills["READING_SENTENCE"], "SENTENCE_COMPLETION", "Complete the sentence: The pilot project began in ____.", None, year),
-            (skills["READING_SUMMARY"], "SUMMARY", f"Complete the summary: The project improved participation by ____ percent.", None, percent),
-            (skills["READING_MCQ"], "MCQ", "What made the most successful sites different?", ["They used only technology", "They avoided public meetings", "They combined expert planning with community maintenance", "They rejected local data"], "They combined expert planning with community maintenance"),
-            (skills["READING_MCQ"], "MCQ", "What problem did critics identify?", ["limited funding", "too many birds", "no local interest", "excessive rainfall"], "limited funding"),
-            (skills["READING_SUMMARY"], "SUMMARY", "Complete the summary: Public trust increased when residents helped collect ____.", None, "data"),
-            (skills["READING_MATCHING"], "MATCHING", "Match the role: researchers found improvement in what area?", ["public trust", "international trade", "exam scores", "fuel prices"], "public trust"),
-            (skills["READING_SENTENCE"], "SENTENCE_COMPLETION", f"Complete the sentence: The passage focuses on ____.", None, subject),
+            (skills["TF_NG"], "TF_NG", f"{title} are discussed as an urban research focus.", ["True", "False", "Not Given"], "True"),
+            (skills["TF_NG"], "TF_NG", f"The pilot project began in {str(int(year) + 2)}.", ["True", "False", "Not Given"], "False"),
+            (skills["TF_NG"], "TF_NG", f"The passage states that the project was funded by an international bank.", ["True", "False", "Not Given"], "Not Given"),
+            (skills["HEADINGS"], "HEADINGS", "Choose the best heading for the passage.", ["Community involvement in a practical research project", "A history of private banking", "The decline of scientific planning", "A guide to laboratory safety"], "Community involvement in a practical research project"),
+            (skills["MATCHING_INFO"], "MATCHING_INFO", f"Which group benefited directly from {subject}?", [audience, "foreign tourists", "factory owners", "professional athletes"], audience),
+            (skills["SENTENCE_COMP"], "SENTENCE_COMP", "Complete the sentence: The pilot project began in ____.", None, year),
+            (skills["SUMMARY"], "SUMMARY", f"Complete the summary: The project improved participation by ____ percent.", None, percent),
+            (skills["MCQ"], "MCQ", "What made the most successful sites different?", ["They used only technology", "They avoided public meetings", "They combined expert planning with community maintenance", "They rejected local data"], "They combined expert planning with community maintenance"),
+            (skills["MCQ"], "MCQ", "What problem did critics identify?", ["limited funding", "too many birds", "no local interest", "excessive rainfall"], "limited funding"),
+            (skills["SUMMARY"], "SUMMARY", "Complete the summary: Public trust increased when residents helped collect ____.", None, "data"),
+            (skills["MATCHING_INFO"], "MATCHING_INFO", "Match the role: researchers found improvement in what area?", ["public trust", "international trade", "exam scores", "fuel prices"], "public trust"),
+            (skills["SENTENCE_COMP"], "SENTENCE_COMP", f"Complete the sentence: The passage focuses on ____.", None, subject),
+            (skills["FILL_BLANK"], "FILL_BLANK", "Fill the blank: Public trust increased when residents helped collect ____.", None, "data"),
+            (skills["FILL_BLANK"], "FILL_BLANK", "Fill the blank: Critics argued that ____ was limited.", None, "funding"),
         ]
         for skill, qtype, text, options, answer in templates:
+            existing_question = db.query(Question).filter(
+                Question.test_set_id == test_set.id,
+                Question.question_type == qtype,
+                Question.question_text == text,
+            ).first()
+            if existing_question:
+                existing_question.skill_id = skill.id
+                existing_question.module = "READING"
+                existing_question.approved = True
+                existing_question.is_active = True
+                continue
             db.add(Question(
                 skill_id=skill.id,
                 test_set_id=test_set.id,
@@ -119,6 +144,7 @@ def seed_reading(db, skills):
                 explanation=f"The answer is supported by the passage section about {subject}.",
                 tags=[qtype.lower(), subject],
                 approved=True,
+                is_active=True,
             ))
             created += 1
     return created
