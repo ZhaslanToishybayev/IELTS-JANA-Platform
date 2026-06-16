@@ -2,7 +2,7 @@
 
 from sqlalchemy.orm import Session
 
-from ..models import Attempt, MistakeReview, Question, Skill, UserSkillMastery
+from ..models import Attempt, DiagnosticSession, MistakeReview, Question, Skill, UserSkillMastery
 from .module_skills import get_categories_for_module
 
 
@@ -11,35 +11,33 @@ READING_MODULE = "READING"
 
 def _reading_diagnostic_plan() -> dict:
     return {
-        "title": "Today's IELTS Plan",
-        "estimated_minutes": 20,
+        "title": "Start with your Reading Diagnostic",
+        "estimated_minutes": 10,
         "focus_skill": None,
         "tasks": [
             {
-                "type": "reading_practice",
-                "module": READING_MODULE,
-                "label": "Complete your first 10 Reading questions",
-                "target": 10,
-                "href": "/practice",
-            },
-            {
                 "type": "diagnostic",
                 "module": READING_MODULE,
-                "label": "Build your initial Reading skill profile",
-                "target": 1,
-                "href": "/practice",
+                "label": "Complete your 10-question Reading Diagnostic",
+                "target": 10,
+                "href": "/diagnostic",
             },
         ],
-        "reason": (
-            "Complete a short Reading diagnostic session so IELTS JANA can "
-            "personalize your training from real performance data."
-        ),
+        "reason": "Complete the diagnostic first so JANA can build a better daily plan.",
         "reward": {"xp": 50, "streak": True},
     }
 
 
 def get_today_plan(db: Session, user_id: int) -> dict:
     """Return a minimal actionable plan based on current mastery data."""
+    completed_diagnostic = db.query(DiagnosticSession).filter(
+        DiagnosticSession.user_id == user_id,
+        DiagnosticSession.module == READING_MODULE,
+        DiagnosticSession.status == "completed",
+    ).first()
+    if not completed_diagnostic:
+        return _reading_diagnostic_plan()
+
     total_attempts = db.query(Attempt).filter(Attempt.user_id == user_id).count()
     reading_categories = get_categories_for_module(READING_MODULE)
     weakest_mastery = (

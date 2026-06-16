@@ -164,6 +164,7 @@ export default function DiagnosticPage() {
 
     const target = status?.target || 10;
     const answered = status?.answered || 0;
+    const hasDiagnosticSession = Boolean(status?.session_id);
     const activeQuestionNumber = Math.min(answered + (feedback ? 0 : 1), target);
     const weakest = result?.weak_skills[0];
     const weakestHref = weakest
@@ -211,7 +212,7 @@ export default function DiagnosticPage() {
                         </div>
                     </div>
                     <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                        This is an estimated Reading profile based on your first/current Reading attempts, not an official IELTS score.
+                        This is an estimated Reading profile based on your diagnostic session, not an official IELTS score.
                     </p>
 
                     <div className="space-y-3">
@@ -243,11 +244,11 @@ export default function DiagnosticPage() {
                             Go to Today&apos;s Plan
                             <ArrowRight className="w-4 h-4" />
                         </Link>
-                        <Link href="/review" className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
-                            Review mistakes
-                        </Link>
                         <Link href={weakestHref} className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
                             Practice weakest skill
+                        </Link>
+                        <Link href="/review" className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                            Review mistakes
                         </Link>
                         <button onClick={() => startDiagnostic(true)} className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
                             Retake diagnostic
@@ -267,10 +268,16 @@ export default function DiagnosticPage() {
                             <BookOpen className="w-6 h-6" />
                         </div>
                         <div>
-                            <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">New learner setup</p>
-                            <h1 className="text-3xl font-black text-slate-900 dark:text-white">Start your Reading Diagnostic</h1>
+                            <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">
+                                {hasDiagnosticSession ? 'Diagnostic in progress' : 'New learner setup'}
+                            </p>
+                            <h1 className="text-3xl font-black text-slate-900 dark:text-white">
+                                {hasDiagnosticSession ? 'Resume Reading Diagnostic' : 'Welcome to IELTS JANA'}
+                            </h1>
                             <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">
-                                Answer 10 short Reading questions so JANA can build your first skill profile and recommend the right next step.
+                                {hasDiagnosticSession
+                                    ? 'Pick up where you left off and finish your first Reading skill profile.'
+                                    : "Let's find your Reading weak spots first."}
                             </p>
                         </div>
                     </div>
@@ -278,23 +285,23 @@ export default function DiagnosticPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4">
                             <Clock className="w-5 h-5 text-blue-600 mb-3" />
-                            <div className="text-sm font-black text-slate-900 dark:text-white">10 minutes</div>
-                            <div className="text-xs font-bold text-slate-500">Estimated time</div>
+                            <div className="text-sm font-black text-slate-900 dark:text-white">10-question Reading Diagnostic</div>
+                            <div className="text-xs font-bold text-slate-500">Estimated time: 10 minutes</div>
                         </div>
                         <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4">
                             <Target className="w-5 h-5 text-blue-600 mb-3" />
-                            <div className="text-sm font-black text-slate-900 dark:text-white">{answered}/{target} questions</div>
-                            <div className="text-xs font-bold text-slate-500">Diagnostic progress</div>
+                            <div className="text-sm font-black text-slate-900 dark:text-white">Personalized weak skill profile</div>
+                            <div className="text-xs font-bold text-slate-500">{answered}/{target} questions completed</div>
                         </div>
                         <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4">
                             <BarChart3 className="w-5 h-5 text-blue-600 mb-3" />
-                            <div className="text-sm font-black text-slate-900 dark:text-white">Reading only</div>
-                            <div className="text-xs font-bold text-slate-500">Initial MVP focus</div>
+                            <div className="text-sm font-black text-slate-900 dark:text-white">Today&apos;s Plan based on your result</div>
+                            <div className="text-xs font-bold text-slate-500">Practice weak skills next</div>
                         </div>
                     </div>
 
                     <button onClick={() => startDiagnostic()} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl px-6 py-4 text-sm font-black hover:bg-blue-700 transition">
-                        {answered > 0 ? 'Resume diagnostic' : 'Start diagnostic'}
+                        {hasDiagnosticSession ? 'Resume Reading Diagnostic' : 'Start Reading Diagnostic'}
                         <ArrowRight className="w-4 h-4" />
                     </button>
                 </div>

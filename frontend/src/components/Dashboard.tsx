@@ -157,6 +157,7 @@ export function Dashboard() {
 
     const todayPlanCtaHref = todayPlan?.tasks.find((task) => task.href)?.href || '/practice';
     const diagnosticWeakest = diagnosticResult?.weak_skills[0];
+    const hasCompletedDiagnostic = diagnosticStatus?.completed === true;
     const diagnosticCtaHref = diagnosticStatus?.completed
         ? diagnosticWeakest
             ? `/practice?module=READING&question_type=${encodeURIComponent(diagnosticWeakest.category)}`
@@ -252,27 +253,29 @@ export function Dashboard() {
 
             {/* Reading Diagnostic */}
             {diagnosticStatus && (
-                <div className="card p-5 !rounded-2xl">
+                <div className={`card !rounded-2xl ${hasCompletedDiagnostic ? 'p-5' : 'p-6 border-2 border-blue-200 dark:border-blue-800 shadow-xl shadow-blue-600/10'}`}>
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
-                            <div className="w-11 h-11 bg-slate-900 dark:bg-white rounded-xl flex items-center justify-center text-white dark:text-slate-900">
+                            <div className={`${hasCompletedDiagnostic ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-blue-600 text-white'} w-11 h-11 rounded-xl flex items-center justify-center`}>
                                 <BookOpen className="w-5 h-5" />
                             </div>
                             <div>
                                 <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                                    {diagnosticStatus.completed ? 'Diagnostic completed' : 'Complete your Reading Diagnostic'}
+                                    {hasCompletedDiagnostic
+                                        ? 'Diagnostic completed'
+                                        : diagnosticStatus.answered > 0 ? 'Resume your Reading Diagnostic' : 'Complete your Reading Diagnostic'}
                                 </h2>
                                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">
-                                    {diagnosticStatus.completed
+                                    {hasCompletedDiagnostic
                                         ? diagnosticWeakest
                                             ? `Weakest Reading skill: ${diagnosticWeakest.skill_name}`
                                             : `Accuracy: ${Math.round((diagnosticResult?.accuracy || 0) * 100)}%`
-                                        : `${diagnosticStatus.answered}/${diagnosticStatus.target} questions completed`}
+                                        : `${diagnosticStatus.answered}/${diagnosticStatus.target} questions completed. Complete your diagnostic first so JANA can build a better plan.`}
                                 </p>
                             </div>
                         </div>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                            {!diagnosticStatus.completed && (
+                            {!hasCompletedDiagnostic && (
                                 <div className="w-full sm:w-40 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                     <div
                                         className="h-full bg-blue-600"
@@ -281,18 +284,23 @@ export function Dashboard() {
                                 </div>
                             )}
                             <Link href={diagnosticCtaHref} className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl px-5 py-3 text-sm font-black hover:bg-blue-700 transition">
-                                {diagnosticStatus.completed
+                                {hasCompletedDiagnostic
                                     ? diagnosticWeakest ? 'Practice weakest skill' : 'Review mistakes'
-                                    : 'Start diagnostic'}
+                                    : diagnosticStatus.answered > 0 ? 'Continue diagnostic' : 'Start diagnostic'}
                                 <ArrowRight className="w-4 h-4" />
                             </Link>
+                            {hasCompletedDiagnostic && (
+                                <Link href="/review" className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                                    Review mistakes
+                                </Link>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
             {/* Today's Plan */}
-            <div className="card p-6 !rounded-2xl overflow-hidden">
+            <div className={`card p-6 !rounded-2xl overflow-hidden ${!hasCompletedDiagnostic ? 'opacity-90' : ''}`}>
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     <div className="space-y-4 flex-1">
                         <div className="flex flex-wrap items-center gap-3">
@@ -321,6 +329,11 @@ export function Dashboard() {
                             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{planError}</p>
                         ) : (
                             <>
+                                {!hasCompletedDiagnostic && (
+                                    <p className="text-sm font-black text-blue-700 dark:text-blue-300">
+                                        Complete your diagnostic first so JANA can build a better plan.
+                                    </p>
+                                )}
                                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300 max-w-2xl">
                                     {todayPlan?.reason}
                                 </p>

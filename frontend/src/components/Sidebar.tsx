@@ -11,6 +11,7 @@ import {
     Trophy,
     ClipboardCheck,
     BarChart3,
+    Target,
     Clock,
     LogOut,
     ChevronLeft,
@@ -23,6 +24,7 @@ import { useAuth } from '@/lib/auth';
 
 const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Diagnostic', href: '/diagnostic', icon: Target },
     { name: 'Reading', href: '/practice', icon: BookOpen },
     { name: 'Listening', href: '/listening', icon: Headphones },
     { name: 'Writing', href: '/writing', icon: PenTool },
