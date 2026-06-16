@@ -1,7 +1,29 @@
 """Tests for Today's Plan API."""
 
-from app.models import Attempt, MistakeReview, Question, Skill, User, UserSkillMastery
+from app.models import Attempt, DiagnosticSession, MistakeReview, Question, Skill, User, UserSkillMastery
 from app.services.module_skills import skill_belongs_to_module
+
+
+def _complete_reading_diagnostic(db, user_id: int) -> DiagnosticSession:
+    session = DiagnosticSession(
+        user_id=user_id,
+        module="READING",
+        status="completed",
+        target_questions=10,
+        accuracy=0.6,
+        estimated_band=6.0,
+        result_snapshot={
+            "completed": True,
+            "answered": 10,
+            "accuracy": 0.6,
+            "estimated_reading_band": 6.0,
+            "weak_skills": [],
+            "recommendation": "Start with Reading practice.",
+        },
+    )
+    db.add(session)
+    db.flush()
+    return session
 
 
 class TestTodayPlan:
@@ -16,10 +38,12 @@ class TestTodayPlan:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["title"] == "Today's IELTS Plan"
+        assert data["title"] == "Start with your Reading Diagnostic"
         assert data["focus_skill"] is None
-        assert data["tasks"][0]["label"] == "Complete your first 10 Reading questions"
-        assert "initial" in data["reason"].lower() or "personalize" in data["reason"].lower()
+        assert data["tasks"][0]["type"] == "diagnostic"
+        assert data["tasks"][0]["label"] == "Complete your 10-question Reading Diagnostic"
+        assert data["tasks"][0]["href"] == "/diagnostic"
+        assert "diagnostic first" in data["reason"].lower()
 
     def test_today_plan_uses_weakest_skill_mastery(self, client, db, test_user_data):
         client.post("/api/auth/signup", json=test_user_data)
@@ -29,6 +53,7 @@ class TestTodayPlan:
         })
         token = login.json()["access_token"]
         user = db.query(User).filter(User.email == test_user_data["email"]).first()
+        _complete_reading_diagnostic(db, user.id)
 
         headings = Skill(name="Matching Headings", category="HEADINGS")
         summary = Skill(name="Summary Completion", category="SUMMARY")
@@ -92,6 +117,7 @@ class TestTodayPlan:
         })
         token = login.json()["access_token"]
         user = db.query(User).filter(User.email == test_user_data["email"]).first()
+        _complete_reading_diagnostic(db, user.id)
 
         headings = Skill(name="Matching Headings", category="HEADINGS")
         listening = Skill(name="Listening Forms", category="LISTENING_FORM")
@@ -217,7 +243,7 @@ class TestTodayPlan:
 
         assert data["focus_skill"] is None
         assert data["tasks"][0]["module"] == "READING"
-        assert data["tasks"][0]["label"] == "Complete your first 10 Reading questions"
+        assert data["tasks"][0]["label"] == "Complete your 10-question Reading Diagnostic"
 
     def test_today_plan_includes_unresolved_reading_mistake_review(self, client, db, test_user_data):
         client.post("/api/auth/signup", json=test_user_data)
@@ -227,6 +253,7 @@ class TestTodayPlan:
         })
         token = login.json()["access_token"]
         user = db.query(User).filter(User.email == test_user_data["email"]).first()
+        _complete_reading_diagnostic(db, user.id)
 
         headings = Skill(name="Matching Headings", category="HEADINGS")
         db.add(headings)

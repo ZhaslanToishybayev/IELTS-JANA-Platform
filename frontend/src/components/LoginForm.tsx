@@ -11,8 +11,6 @@ import {
     User,
     ArrowRight,
     Sparkles,
-    CheckCircle2,
-    TrendingUp,
     Zap,
     BarChart3
 } from 'lucide-react';
@@ -35,10 +33,11 @@ export function LoginForm() {
         try {
             if (isLogin) {
                 await login(email, password);
+                router.push('/dashboard');
             } else {
                 await signup(email, username, password);
+                router.push('/diagnostic');
             }
-            router.push('/dashboard');
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
