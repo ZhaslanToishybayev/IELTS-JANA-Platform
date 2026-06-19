@@ -78,6 +78,7 @@ For demo environments only, seed original demo content and the demo learner:
 ```bash
 cd backend
 python seed_ielts_v1.py
+python validate_reading_content.py
 python seed_demo_user.py
 python check_content_coverage.py
 ```

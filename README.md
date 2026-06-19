@@ -142,6 +142,18 @@ lint, on pull requests and pushes to `master`.
 CI also runs a PostgreSQL migration smoke check to catch production database
 issues early.
 
+### Reading Content Quality
+
+Seeded Reading content is original IELTS-style demo material, not official IELTS
+or Cambridge content. After changing Reading seed data, run:
+
+```bash
+cd backend
+python seed_ielts_v1.py
+python validate_reading_content.py
+python check_content_coverage.py
+```
+
 ## 🎮 Features
 
 ### AI-Driven Reading Practice

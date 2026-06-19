@@ -40,6 +40,12 @@ jobs:
       - name: Compile app
         run: python -m compileall app
 
+      - name: Validate seeded Reading content
+        run: |
+          python seed_ielts_v1.py
+          python validate_reading_content.py
+          python check_content_coverage.py
+
   backend-postgres:
     name: Backend PostgreSQL Migration Smoke
     runs-on: ubuntu-latest
