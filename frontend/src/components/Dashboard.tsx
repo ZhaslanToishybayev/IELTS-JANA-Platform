@@ -163,6 +163,7 @@ export function Dashboard() {
             ? `/practice?module=READING&question_type=${encodeURIComponent(diagnosticWeakest.category)}`
             : '/review'
         : '/diagnostic';
+    const unresolvedMistakeCount = data.weak_question_types.reduce((total, item) => total + item.mistakes, 0);
 
     return (
         <div className="py-6 space-y-8">
@@ -481,9 +482,12 @@ export function Dashboard() {
                         </Link>
                     )}
 
-                    {data.mistake_log?.length > 0 && (
-                        <div className="card p-6 !rounded-2xl">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-4">Mistake Log</h3>
+                    <div className="card p-6 !rounded-2xl">
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Mistake Review</h3>
+                            <span className="text-sm font-black text-rose-600">{unresolvedMistakeCount} unresolved</span>
+                        </div>
+                        {data.mistake_log?.length > 0 ? (
                             <div className="space-y-3">
                                 {data.mistake_log.slice(0, 3).map((item) => (
                                     <div key={item.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
@@ -492,8 +496,16 @@ export function Dashboard() {
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <p className="text-sm font-bold text-slate-500 dark:text-slate-400">
+                                No unresolved mistakes. Keep practicing to build your review list.
+                            </p>
+                        )}
+                        <Link href="/review" className="mt-4 inline-flex items-center justify-center gap-2 w-full rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-3 text-xs font-black uppercase tracking-widest">
+                            Review mistakes
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
+                    </div>
 
                     {/* Pro Tip Card */}
                     <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/50 rounded-2xl p-6 relative overflow-hidden">

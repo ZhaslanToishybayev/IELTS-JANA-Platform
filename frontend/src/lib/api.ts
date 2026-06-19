@@ -25,17 +25,20 @@ export interface TodayPlan {
 
 export interface ReviewMistake {
     id: number;
+    question_id: number;
     module: string;
     question_type: string;
+    skill_category: string;
     question_text: string;
     passage_title: string | null;
     passage_excerpt: string | null;
     user_answer: string;
     correct_answer: string;
     explanation: string | null;
-    created_at: string;
-    question_id: number;
     is_resolved: boolean;
+    created_at: string;
+    attempted_at: string;
+    practice_href: string;
     skill: {
         id: number;
         name: string;
@@ -56,6 +59,7 @@ export interface ReviewMistakeFilters {
     module?: string;
     question_type?: string;
     limit?: number;
+    status?: 'unresolved' | 'resolved' | 'all';
     resolved?: 'false' | 'true' | 'all';
 }
 
@@ -281,6 +285,7 @@ class ApiClient {
             if (filters.module) params.set('module', filters.module);
             if (filters.question_type) params.set('question_type', filters.question_type);
             if (filters.limit) params.set('limit', String(filters.limit));
+            if (filters.status) params.set('status', filters.status);
             if (filters.resolved) params.set('resolved', filters.resolved);
         }
         const query = params.toString() ? `?${params.toString()}` : '';
@@ -292,7 +297,14 @@ class ApiClient {
     }
 
     async resolveMistake(token: string, mistakeId: number) {
-        return this.fetch<{ message: string; id: number }>(`/review/mistakes/${mistakeId}/resolve`, {
+        return this.fetch<ReviewMistake>(`/review/${mistakeId}/resolve`, {
+            method: 'POST',
+            token,
+        });
+    }
+
+    async unresolveMistake(token: string, mistakeId: number) {
+        return this.fetch<ReviewMistake>(`/review/${mistakeId}/unresolve`, {
             method: 'POST',
             token,
         });

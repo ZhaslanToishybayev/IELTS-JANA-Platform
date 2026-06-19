@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -15,10 +15,24 @@ import {
 import { api, type ReviewMistake, type ReviewSummary } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
-const MODULES = ['ALL', 'READING', 'LISTENING'];
-const RESOLVED_FILTERS = [
-    { label: 'Unresolved', value: 'false' },
-    { label: 'Reviewed', value: 'true' },
+const QUESTION_TYPE_FILTERS = [
+    { label: 'All', value: 'ALL' },
+    { label: 'TF/NG', value: 'TF_NG' },
+    { label: 'Headings', value: 'HEADINGS' },
+    { label: 'Summary', value: 'SUMMARY' },
+    { label: 'Matching Info', value: 'MATCHING_INFO' },
+    { label: 'Sentence Completion', value: 'SENTENCE_COMP' },
+    { label: 'MCQ', value: 'MCQ' },
+    { label: 'Fill Blank', value: 'FILL_BLANK' },
+] as const;
+
+const QUESTION_TYPE_LABELS = Object.fromEntries(
+    QUESTION_TYPE_FILTERS.map((item) => [item.value, item.label])
+) as Record<string, string>;
+
+const STATUS_FILTERS = [
+    { label: 'Unresolved', value: 'unresolved' },
+    { label: 'Resolved', value: 'resolved' },
     { label: 'All', value: 'all' },
 ] as const;
 
@@ -32,9 +46,11 @@ function formatDate(value: string) {
 }
 
 function practiceHref(mistake: ReviewMistake) {
+    if (mistake.practice_href) return mistake.practice_href;
     const params = new URLSearchParams({
-        module: mistake.module,
+        module: mistake.module || 'READING',
         question_type: mistake.question_type,
+        mode: 'drill',
     });
     return `/practice?${params.toString()}`;
 }
@@ -42,9 +58,8 @@ function practiceHref(mistake: ReviewMistake) {
 export default function ReviewPage() {
     const { user, token, loading } = useAuth();
     const router = useRouter();
-    const [module, setModule] = useState('ALL');
     const [questionType, setQuestionType] = useState('ALL');
-    const [resolved, setResolved] = useState<'false' | 'true' | 'all'>('false');
+    const [status, setStatus] = useState<'unresolved' | 'resolved' | 'all'>('unresolved');
     const [mistakes, setMistakes] = useState<ReviewMistake[]>([]);
     const [summary, setSummary] = useState<ReviewSummary | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -57,9 +72,9 @@ export default function ReviewPage() {
         setError(null);
         try {
             const filters = {
-                module: module === 'ALL' ? undefined : module,
+                module: 'READING',
                 question_type: questionType === 'ALL' ? undefined : questionType,
-                resolved,
+                status,
                 limit: 50,
             };
             const [mistakeResult, summaryResult] = await Promise.all([
@@ -74,7 +89,7 @@ export default function ReviewPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [module, questionType, resolved, token]);
+    }, [questionType, status, token]);
 
     useEffect(() => {
         if (!loading && !user) router.push('/login');
@@ -84,29 +99,28 @@ export default function ReviewPage() {
         loadReviewData();
     }, [loadReviewData]);
 
-    const questionTypes = useMemo(() => {
-        const fromSummary = summary?.by_question_type.map((item) => item.question_type) || [];
-        const fromMistakes = mistakes.map((mistake) => mistake.question_type);
-        return Array.from(new Set([...fromSummary, ...fromMistakes])).sort();
-    }, [mistakes, summary]);
-
     const topWeakType = summary?.by_question_type[0];
-    const hasActiveFilters = module !== 'ALL' || questionType !== 'ALL' || resolved !== 'false';
+    const hasActiveFilters = questionType !== 'ALL' || status !== 'unresolved';
+    const selectedQuestionTypeLabel = QUESTION_TYPE_LABELS[questionType] || questionType;
+    const selectedMistakeLabel = questionType === 'ALL' ? 'Reading' : selectedQuestionTypeLabel;
     const recommendation = topWeakType
-        ? `Focus on ${topWeakType.question_type}: it appears most often in your unresolved mistakes.`
+        ? `Focus on ${QUESTION_TYPE_LABELS[topWeakType.question_type] || topWeakType.question_type}: it appears most often in your unresolved mistakes.`
         : 'Keep practicing and this page will turn misses into a focused review queue.';
 
     const resetFilters = () => {
-        setModule('ALL');
         setQuestionType('ALL');
-        setResolved('false');
+        setStatus('unresolved');
     };
 
-    const resolve = async (id: number) => {
+    const setReviewStatus = async (mistake: ReviewMistake, nextResolved: boolean) => {
         if (!token) return;
-        setResolvingId(id);
+        setResolvingId(mistake.id);
         try {
-            await api.resolveMistake(token, id);
+            if (nextResolved) {
+                await api.resolveMistake(token, mistake.id);
+            } else {
+                await api.unresolveMistake(token, mistake.id);
+            }
             await loadReviewData();
         } finally {
             setResolvingId(null);
@@ -120,7 +134,7 @@ export default function ReviewPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Mistake Review</h1>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium">Turn wrong answers into your next band-score gains.</p>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium">Review Reading mistakes, understand the explanation, then drill the same question type.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Link href="/practice" className="px-4 py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-90 transition">
@@ -142,7 +156,9 @@ export default function ReviewPage() {
                 </div>
                 <div className="card p-6 !rounded-2xl">
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Weak type</div>
-                    <div className="text-2xl font-black text-slate-900 dark:text-white">{topWeakType?.question_type || 'No pattern yet'}</div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white">
+                        {topWeakType ? (QUESTION_TYPE_LABELS[topWeakType.question_type] || topWeakType.question_type) : 'No pattern yet'}
+                    </div>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{topWeakType ? `${topWeakType.count} unresolved mistakes` : 'New patterns appear after practice.'}</p>
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/50 rounded-2xl p-6 relative overflow-hidden">
@@ -158,33 +174,24 @@ export default function ReviewPage() {
                     Filters
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    {MODULES.map((item) => (
+                    {QUESTION_TYPE_FILTERS.map((item) => (
                         <button
-                            key={item}
-                            onClick={() => setModule(item)}
-                            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition ${module === item
+                            key={item.value}
+                            onClick={() => setQuestionType(item.value)}
+                            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition ${questionType === item.value
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-blue-600'
                                 }`}
                         >
-                            {item === 'ALL' ? 'All modules' : item}
+                            {item.label}
                         </button>
                     ))}
-                    <select
-                        value={questionType}
-                        onChange={(event) => setQuestionType(event.target.value)}
-                        className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 outline-none"
-                    >
-                        <option value="ALL">All question types</option>
-                        {questionTypes.map((item) => (
-                            <option key={item} value={item}>{item}</option>
-                        ))}
-                    </select>
-                    {RESOLVED_FILTERS.map((item) => (
+                    <div className="w-px h-8 bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
+                    {STATUS_FILTERS.map((item) => (
                         <button
                             key={item.value}
-                            onClick={() => setResolved(item.value)}
-                            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition ${resolved === item.value
+                            onClick={() => setStatus(item.value)}
+                            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition ${status === item.value
                                 ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
                                 : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white'
                                 }`}
@@ -220,7 +227,9 @@ export default function ReviewPage() {
                         {hasActiveFilters ? 'No mistakes match these filters' : 'No mistakes yet'}
                     </h2>
                     <p className="text-slate-500 font-medium">
-                        {hasActiveFilters ? 'Reset filters or switch back to unresolved mistakes.' : 'Practice a few questions and your review queue will appear here.'}
+                        {hasActiveFilters
+                            ? `No ${status === 'all' ? '' : `${status} `}${selectedMistakeLabel} mistakes. Try another filter or continue practicing.`
+                            : 'No mistakes to review yet. Complete a Reading practice session first.'}
                     </p>
                     <div className="flex flex-wrap justify-center gap-3">
                         {hasActiveFilters && (
@@ -244,7 +253,7 @@ export default function ReviewPage() {
                                             {mistake.module}
                                         </span>
                                         <span className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest">
-                                            {mistake.question_type}
+                                            {QUESTION_TYPE_LABELS[mistake.question_type] || mistake.question_type}
                                         </span>
                                         {mistake.skill && (
                                             <span className="px-2.5 py-1 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-widest">
@@ -257,7 +266,7 @@ export default function ReviewPage() {
                                     </h2>
                                 </div>
                                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">
-                                    {formatDate(mistake.created_at)}
+                                    {formatDate(mistake.attempted_at || mistake.created_at)}
                                 </div>
                             </div>
 
@@ -294,15 +303,15 @@ export default function ReviewPage() {
                             )}
 
                             <div className="flex flex-col sm:flex-row gap-3">
-                                {!mistake.is_resolved && (
-                                    <button
-                                        onClick={() => resolve(mistake.id)}
-                                        disabled={resolvingId === mistake.id}
-                                        className="flex-1 py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-xs hover:opacity-90 transition disabled:opacity-60"
-                                    >
-                                        {resolvingId === mistake.id ? 'Saving...' : 'Mark as reviewed'}
-                                    </button>
-                                )}
+                                <button
+                                    onClick={() => setReviewStatus(mistake, !mistake.is_resolved)}
+                                    disabled={resolvingId === mistake.id}
+                                    className="flex-1 py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-xs hover:opacity-90 transition disabled:opacity-60"
+                                >
+                                    {resolvingId === mistake.id
+                                        ? 'Saving...'
+                                        : mistake.is_resolved ? 'Mark unresolved' : 'Mark resolved'}
+                                </button>
                                 <Link href={practiceHref(mistake)} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-black uppercase tracking-widest text-xs hover:bg-blue-700 transition flex items-center justify-center gap-2">
                                     Practice similar
                                     <ArrowRight className="w-4 h-4" />
