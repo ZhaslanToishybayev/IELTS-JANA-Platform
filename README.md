@@ -156,6 +156,8 @@ python check_content_coverage.py
 
 Practice mistakes are saved into Mistake Review, where learners can filter
 errors, read explanations, and drill similar Reading question types.
+Diagnostic submissions are tied to questions issued by the active diagnostic
+session, preventing arbitrary question submission.
 
 ## 🎮 Features
 

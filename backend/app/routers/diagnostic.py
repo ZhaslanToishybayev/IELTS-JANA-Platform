@@ -11,7 +11,15 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Attempt, DiagnosticSession, Question, Skill, User, UserSkillMastery
+from ..models import (
+    Attempt,
+    DiagnosticSession,
+    DiagnosticSessionQuestion,
+    Question,
+    Skill,
+    User,
+    UserSkillMastery,
+)
 from ..routers.auth import get_current_user
 from ..schemas import AttemptCreate, NextQuestionResponse, QuestionResponse
 from ..services.attempts import submit_question_attempt
@@ -110,6 +118,12 @@ def _attempts_query(db: Session, session_id: int):
     )
 
 
+def _issued_query(db: Session, session_id: int):
+    return db.query(DiagnosticSessionQuestion).filter(
+        DiagnosticSessionQuestion.session_id == session_id,
+    )
+
+
 def _answered_count(db: Session, session: DiagnosticSession | None) -> int:
     if not session:
         return 0
@@ -148,6 +162,22 @@ def _reading_question_query(db: Session):
         Question.is_active.is_(True),
         Question.approved.is_(True),
         Skill.category.in_(reading_categories),
+    )
+
+
+def _question_response(question: Question) -> QuestionResponse:
+    return QuestionResponse(
+        id=question.id,
+        skill_id=question.skill_id,
+        passage=question.passage or "",
+        passage_title=question.passage_title,
+        question_text=question.question_text,
+        question_type=question.question_type,
+        options=question.options,
+        difficulty=question.difficulty,
+        audio_url=None,
+        audio_duration_sec=None,
+        transcript_available=False,
     )
 
 
@@ -282,10 +312,29 @@ async def get_diagnostic_next(
         session = _create_session(db, current_user.id)
 
     reading_categories = get_categories_for_module(DIAGNOSTIC_MODULE)
-    attempted_question_ids = [
+    unanswered_issued = (
+        _issued_query(db, session.id)
+        .filter(DiagnosticSessionQuestion.answered_at.is_(None))
+        .order_by(DiagnosticSessionQuestion.position.asc(), DiagnosticSessionQuestion.id.asc())
+        .first()
+    )
+    if unanswered_issued:
+        question = unanswered_issued.question
+        if not question:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Issued diagnostic question not found")
+        skill_name = question.skill.name if question.skill else "Reading"
+        category = question.skill.category if question.skill else question.question_type
+        return NextQuestionResponse(
+            question=_question_response(question),
+            target_skill=skill_name,
+            reason=f"Diagnostic coverage: {category}",
+            session_progress=min(unanswered_issued.position, session.target_questions),
+        )
+
+    issued_question_ids = [
         row[0]
-        for row in _attempts_query(db, session.id)
-        .with_entities(Attempt.question_id)
+        for row in _issued_query(db, session.id)
+        .with_entities(DiagnosticSessionQuestion.question_id)
         .all()
     ]
 
@@ -305,8 +354,8 @@ async def get_diagnostic_next(
     selected_category = None
     for category in categories_by_need:
         query = _reading_question_query(db).filter(Skill.category == category)
-        if attempted_question_ids:
-            query = query.filter(~Question.id.in_(attempted_question_ids))
+        if issued_question_ids:
+            query = query.filter(~Question.id.in_(issued_question_ids))
         question = query.order_by(func.random()).first()
         if question:
             selected_category = category
@@ -314,12 +363,9 @@ async def get_diagnostic_next(
 
     if not question:
         query = _reading_question_query(db)
-        if attempted_question_ids:
-            query = query.filter(~Question.id.in_(attempted_question_ids))
+        if issued_question_ids:
+            query = query.filter(~Question.id.in_(issued_question_ids))
         question = query.order_by(func.random()).first()
-
-    if not question:
-        question = _reading_question_query(db).order_by(func.random()).first()
 
     if not question:
         raise HTTPException(
@@ -331,23 +377,20 @@ async def get_diagnostic_next(
         )
 
     answered = _answered_count(db, session)
+    issued = _issued_query(db, session.id).count()
+    issued_question = DiagnosticSessionQuestion(
+        session_id=session.id,
+        question_id=question.id,
+        position=issued + 1,
+    )
+    db.add(issued_question)
+    db.commit()
+    db.refresh(issued_question)
     skill_name = question.skill.name if question.skill else "Reading"
     category = selected_category or (question.skill.category if question.skill else question.question_type)
 
     return NextQuestionResponse(
-        question=QuestionResponse(
-            id=question.id,
-            skill_id=question.skill_id,
-            passage=question.passage or "",
-            passage_title=question.passage_title,
-            question_text=question.question_text,
-            question_type=question.question_type,
-            options=question.options,
-            difficulty=question.difficulty,
-            audio_url=None,
-            audio_duration_sec=None,
-            transcript_available=False,
-        ),
+        question=_question_response(question),
         target_skill=skill_name,
         reason=f"Diagnostic coverage: {category}",
         session_progress=min(answered + 1, session.target_questions),
@@ -377,12 +420,36 @@ async def submit_diagnostic_answer(
             detail="Diagnostic only accepts Reading questions",
         )
 
+    issued_question = (
+        _issued_query(db, session.id)
+        .filter(DiagnosticSessionQuestion.question_id == payload.question_id)
+        .first()
+    )
+    if not issued_question:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question was not issued for this diagnostic session.",
+        )
+    if issued_question.answered_at is not None or issued_question.attempt_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question already answered for this diagnostic session.",
+        )
+
     feedback = submit_question_attempt(
         db,
         current_user,
         payload,
         diagnostic_session_id=session.id,
     )
+
+    issued_question = db.query(DiagnosticSessionQuestion).filter(
+        DiagnosticSessionQuestion.id == issued_question.id,
+    ).first()
+    if issued_question:
+        issued_question.attempt_id = feedback.id
+        issued_question.answered_at = datetime.now()
+        db.commit()
 
     db.refresh(session)
     _complete_session_if_ready(db, session)
