@@ -13,6 +13,7 @@ from app.models import (
     Attempt,
     DashboardMetric,
     DiagnosticSession,
+    DiagnosticSessionQuestion,
     MistakeReview,
     Question,
     Skill,
@@ -96,6 +97,16 @@ def ensure_demo_user(db) -> User:
 
 
 def reset_demo_profile(db, user: User) -> None:
+    session_ids = [
+        row[0]
+        for row in db.query(DiagnosticSession.id)
+        .filter(DiagnosticSession.user_id == user.id)
+        .all()
+    ]
+    if session_ids:
+        db.query(DiagnosticSessionQuestion).filter(
+            DiagnosticSessionQuestion.session_id.in_(session_ids)
+        ).delete(synchronize_session=False)
     db.query(MistakeReview).filter(MistakeReview.user_id == user.id).delete(synchronize_session=False)
     db.query(DashboardMetric).filter(DashboardMetric.user_id == user.id).delete(synchronize_session=False)
     db.query(Attempt).filter(Attempt.user_id == user.id).delete(synchronize_session=False)
@@ -237,6 +248,15 @@ def seed_demo_profile(db) -> User:
         )
         for index, question in enumerate(selected_questions[:DIAGNOSTIC_TARGET])
     ]
+    for index, attempt in enumerate(diagnostic_attempts, start=1):
+        db.add(DiagnosticSessionQuestion(
+            session_id=session.id,
+            question_id=attempt.question_id,
+            attempt_id=attempt.id,
+            position=index,
+            served_at=attempt.created_at,
+            answered_at=attempt.created_at,
+        ))
     practice_attempts = [
         _create_attempt(
             db,

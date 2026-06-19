@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
@@ -163,6 +163,27 @@ class DiagnosticSession(Base):
 
     user = relationship("User", backref="diagnostic_sessions")
     attempts = relationship("Attempt", back_populates="diagnostic_session")
+    issued_questions = relationship("DiagnosticSessionQuestion", back_populates="session")
+
+
+class DiagnosticSessionQuestion(Base):
+    """Question issued to a specific diagnostic session before submission."""
+    __tablename__ = "diagnostic_session_questions"
+    __table_args__ = (
+        UniqueConstraint("session_id", "question_id", name="uq_diagnostic_session_question"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("diagnostic_sessions.id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    attempt_id = Column(Integer, ForeignKey("attempts.id"), nullable=True)
+    position = Column(Integer, nullable=False)
+    served_at = Column(DateTime, server_default=func.now())
+    answered_at = Column(DateTime, nullable=True)
+
+    session = relationship("DiagnosticSession", back_populates="issued_questions")
+    question = relationship("Question")
+    attempt = relationship("Attempt")
 
 
 class WritingAttempt(Base):

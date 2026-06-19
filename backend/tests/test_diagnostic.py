@@ -1,6 +1,6 @@
 """Tests for persisted Reading diagnostic sessions."""
 
-from app.models import Attempt, DiagnosticSession, Question, Skill, User
+from app.models import Attempt, DiagnosticSession, DiagnosticSessionQuestion, Question, Skill, User
 
 
 def _signup_and_login(client, email: str, username: str) -> str:
@@ -105,28 +105,73 @@ def test_diagnostic_next_returns_only_reading_questions(client, db):
     data = response.json()
     assert data["question"]["question_type"] == "HEADINGS"
     assert "correct_answer" not in data["question"]
+    session = db.query(DiagnosticSession).filter(DiagnosticSession.status == "in_progress").first()
+    issued = db.query(DiagnosticSessionQuestion).filter(DiagnosticSessionQuestion.session_id == session.id).one()
+    assert issued.question_id == data["question"]["id"]
+    assert issued.position == 1
 
 
-def test_diagnostic_next_avoids_questions_attempted_in_same_session(client, db):
-    token = _signup_and_login(client, "diag-avoid@example.com", "diagavoid")
-    user = db.query(User).filter(User.email == "diag-avoid@example.com").first()
-    first_question = _create_question(db, "HEADINGS", "READING", "first")
-    second_question = _create_question(db, "HEADINGS", "READING", "second")
-    session_response = client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"})
-    session_id = session_response.json()["session_id"]
-    _create_attempt(db, user.id, first_question, session_id=session_id)
+def test_diagnostic_next_twice_without_submit_returns_same_issued_question(client, db):
+    token = _signup_and_login(client, "diag-same@example.com", "diagsame")
+    _create_question(db, "HEADINGS", "READING", "first")
+    _create_question(db, "HEADINGS", "READING", "second")
+    client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"})
     db.commit()
 
-    response = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"})
+    first = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"}).json()
+    second = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"}).json()
 
-    assert response.status_code == 200
-    assert response.json()["question"]["id"] == second_question.id
+    assert first["question"]["id"] == second["question"]["id"]
+    assert db.query(DiagnosticSessionQuestion).count() == 1
+
+
+def test_diagnostic_next_avoids_issued_questions_after_answer(client, db):
+    token = _signup_and_login(client, "diag-avoid@example.com", "diagavoid")
+    _create_question(db, "HEADINGS", "READING", "first")
+    _create_question(db, "HEADINGS", "READING", "second")
+    client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"})
+    db.commit()
+
+    first = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"}).json()["question"]
+    submit_response = client.post(
+        "/api/diagnostic/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"question_id": first["id"], "user_answer": "A", "response_time_ms": 1000},
+    )
+    assert submit_response.status_code == 200
+
+    second = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"}).json()["question"]
+
+    assert second["id"] != first["id"]
 
 
 def test_diagnostic_submit_links_attempt_to_session(client, db):
     token = _signup_and_login(client, "diag-submit@example.com", "diagsubmit")
-    question = _create_question(db, "TF_NG", "READING")
+    _create_question(db, "TF_NG", "READING")
     session_id = client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"}).json()["session_id"]
+    db.commit()
+    question = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"}).json()["question"]
+
+    response = client.post(
+        "/api/diagnostic/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"question_id": question["id"], "user_answer": "A", "response_time_ms": 1200},
+    )
+
+    assert response.status_code == 200
+    attempt = db.query(Attempt).filter(Attempt.question_id == question["id"]).first()
+    assert attempt.diagnostic_session_id == session_id
+    assert response.json()["session_id"] == session_id
+    assert response.json()["diagnostic_completed"] is False
+    issued = db.query(DiagnosticSessionQuestion).filter(DiagnosticSessionQuestion.question_id == question["id"]).one()
+    assert issued.attempt_id == attempt.id
+    assert issued.answered_at is not None
+
+
+def test_diagnostic_submit_rejects_unissued_question(client, db):
+    token = _signup_and_login(client, "diag-unissued@example.com", "diagunissued")
+    question = _create_question(db, "TF_NG", "READING")
+    client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"})
     db.commit()
 
     response = client.post(
@@ -135,24 +180,38 @@ def test_diagnostic_submit_links_attempt_to_session(client, db):
         json={"question_id": question.id, "user_answer": "A", "response_time_ms": 1200},
     )
 
-    assert response.status_code == 200
-    attempt = db.query(Attempt).filter(Attempt.question_id == question.id).first()
-    assert attempt.diagnostic_session_id == session_id
-    assert response.json()["session_id"] == session_id
-    assert response.json()["diagnostic_completed"] is False
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Question was not issued for this diagnostic session."
+
+
+def test_diagnostic_submit_rejects_already_answered_question(client, db):
+    token = _signup_and_login(client, "diag-duplicate@example.com", "diagduplicate")
+    _create_question(db, "TF_NG", "READING")
+    client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"})
+    db.commit()
+    question = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"}).json()["question"]
+    payload = {"question_id": question["id"], "user_answer": "A", "response_time_ms": 1200}
+
+    first = client.post("/api/diagnostic/submit", headers={"Authorization": f"Bearer {token}"}, json=payload)
+    second = client.post("/api/diagnostic/submit", headers={"Authorization": f"Bearer {token}"}, json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json()["detail"] == "Question already answered for this diagnostic session."
 
 
 def test_diagnostic_completes_after_ten_submits(client, db):
     token = _signup_and_login(client, "diag-complete@example.com", "diagcomplete")
-    questions = [_create_question(db, "HEADINGS", "READING", str(index)) for index in range(10)]
+    [_create_question(db, "HEADINGS", "READING", str(index)) for index in range(10)]
     session_id = client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"}).json()["session_id"]
     db.commit()
 
-    for question in questions:
+    for _ in range(10):
+        question = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"}).json()["question"]
         response = client.post(
             "/api/diagnostic/submit",
             headers={"Authorization": f"Bearer {token}"},
-            json={"question_id": question.id, "user_answer": "A", "response_time_ms": 1000},
+            json={"question_id": question["id"], "user_answer": "A", "response_time_ms": 1000},
         )
         assert response.status_code == 200
 
@@ -161,20 +220,22 @@ def test_diagnostic_completes_after_ten_submits(client, db):
     assert session.completed_at is not None
     assert session.result_snapshot["completed"] is True
     assert session.result_snapshot["answered"] == 10
+    assert db.query(DiagnosticSessionQuestion).filter(DiagnosticSessionQuestion.session_id == session_id).count() == 10
 
 
 def test_completed_result_snapshot_does_not_change_after_regular_practice(client, db):
     token = _signup_and_login(client, "diag-stable@example.com", "diagstable")
-    diagnostic_questions = [_create_question(db, "HEADINGS", "READING", f"diag-{index}") for index in range(10)]
+    [_create_question(db, "HEADINGS", "READING", f"diag-{index}") for index in range(10)]
     practice_question = _create_question(db, "SUMMARY", "READING", "practice")
     client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"})
     db.commit()
 
-    for question in diagnostic_questions:
+    for _ in range(10):
+        question = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {token}"}).json()["question"]
         client.post(
             "/api/diagnostic/submit",
             headers={"Authorization": f"Bearer {token}"},
-            json={"question_id": question.id, "user_answer": "B", "response_time_ms": 1000},
+            json={"question_id": question["id"], "user_answer": "B", "response_time_ms": 1000},
         )
 
     result_before = client.get("/api/diagnostic/result", headers={"Authorization": f"Bearer {token}"}).json()
@@ -190,19 +251,29 @@ def test_completed_result_snapshot_does_not_change_after_regular_practice(client
     assert result_after == result_before
 
 
-def test_diagnostic_ignores_other_users_sessions(client, db):
+def test_another_user_cannot_submit_question_issued_to_someone_else(client, db):
     token = _signup_and_login(client, "diag-owner@example.com", "diagowner")
     other_token = _signup_and_login(client, "diag-other@example.com", "diagother")
-    question = _create_question(db, "HEADINGS", "READING")
-    other_session_id = client.post(
-        "/api/diagnostic/start",
-        headers={"Authorization": f"Bearer {other_token}"},
-    ).json()["session_id"]
-    client.post(
+    _create_question(db, "HEADINGS", "READING")
+    client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {token}"})
+    client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {other_token}"})
+    issued_to_other = client.get("/api/diagnostic/next", headers={"Authorization": f"Bearer {other_token}"}).json()["question"]
+    db.commit()
+
+    response = client.post(
         "/api/diagnostic/submit",
-        headers={"Authorization": f"Bearer {other_token}"},
-        json={"question_id": question.id, "user_answer": "A", "response_time_ms": 1000},
+        headers={"Authorization": f"Bearer {token}"},
+        json={"question_id": issued_to_other["id"], "user_answer": "A", "response_time_ms": 1000},
     )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Question was not issued for this diagnostic session."
+
+
+def test_diagnostic_ignores_other_users_sessions(client, db):
+    token = _signup_and_login(client, "diag-owner-status@example.com", "diagownerstatus")
+    other_token = _signup_and_login(client, "diag-other-status@example.com", "diagotherstatus")
+    client.post("/api/diagnostic/start", headers={"Authorization": f"Bearer {other_token}"})
     db.commit()
 
     status_response = client.get("/api/diagnostic/status", headers={"Authorization": f"Bearer {token}"})
@@ -213,7 +284,6 @@ def test_diagnostic_ignores_other_users_sessions(client, db):
     assert status_response.json()["session_id"] is None
     assert result_response.status_code == 200
     assert result_response.json()["answered"] == 0
-    assert db.query(DiagnosticSession).filter(DiagnosticSession.id == other_session_id).first().user.email == "diag-other@example.com"
 
 
 def test_existing_practice_submit_still_works_without_diagnostic_session(client, db):
