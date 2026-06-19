@@ -70,7 +70,10 @@ def test_user_can_list_own_mistakes(client, db):
     assert data["mistakes"][0]["question_id"] == question.id
     assert data["mistakes"][0]["passage_title"] == "Practice Passage"
     assert data["mistakes"][0]["passage_excerpt"]
+    assert data["mistakes"][0]["skill_category"] == "HEADINGS"
     assert data["mistakes"][0]["skill"]["category"] == "HEADINGS"
+    assert data["mistakes"][0]["attempted_at"]
+    assert data["mistakes"][0]["practice_href"] == "/practice?module=READING&question_type=HEADINGS&mode=drill"
 
 
 def test_user_cannot_see_another_users_mistakes(client, db):
@@ -142,7 +145,7 @@ def test_review_filters_work_for_module_question_type_and_resolved(client, db):
     db.commit()
 
     response = client.get(
-        "/api/review/mistakes?module=READING&question_type=TF_NG&resolved=all",
+        "/api/review/mistakes?module=READING&question_type=TF_NG&status=all",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
@@ -151,8 +154,84 @@ def test_review_filters_work_for_module_question_type_and_resolved(client, db):
     assert mistakes[0]["id"] == resolved.id
 
     response = client.get(
-        "/api/review/mistakes?resolved=true",
+        "/api/review/mistakes?status=resolved",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
     assert [item["id"] for item in response.json()["mistakes"]] == [resolved.id]
+
+
+def test_default_review_list_returns_unresolved_reading_mistakes(client, db):
+    token = _signup_and_login(client, "defaultreview@example.com", "defaultreview")
+    user = db.query(User).filter(User.email == "defaultreview@example.com").first()
+    reading = _create_question(db, "TF_NG", "READING")
+    listening = _create_question(db, "LISTENING_FORM", "LISTENING")
+    resolved = _create_mistake(db, user.id, reading, resolved=True)
+    unresolved_reading = _create_mistake(db, user.id, reading)
+    _create_mistake(db, user.id, listening)
+    db.commit()
+
+    response = client.get(
+        "/api/review/mistakes",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.json()["mistakes"]]
+    assert ids == [unresolved_reading.id]
+    assert resolved.id not in ids
+
+
+def test_new_resolve_endpoint_returns_updated_review_item(client, db):
+    token = _signup_and_login(client, "newresolve@example.com", "newresolve")
+    user = db.query(User).filter(User.email == "newresolve@example.com").first()
+    question = _create_question(db, "MCQ", "READING")
+    mistake = _create_mistake(db, user.id, question)
+    db.commit()
+
+    response = client.post(
+        f"/api/review/{mistake.id}/resolve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == mistake.id
+    assert data["is_resolved"] is True
+    assert data["practice_href"] == "/practice?module=READING&question_type=MCQ&mode=drill"
+
+
+def test_unresolve_endpoint_marks_item_unresolved(client, db):
+    token = _signup_and_login(client, "unresolve@example.com", "unresolve")
+    user = db.query(User).filter(User.email == "unresolve@example.com").first()
+    question = _create_question(db, "SUMMARY", "READING")
+    mistake = _create_mistake(db, user.id, question, resolved=True)
+    db.commit()
+
+    response = client.post(
+        f"/api/review/{mistake.id}/unresolve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_resolved"] is False
+    db.refresh(mistake)
+    assert mistake.is_resolved is False
+
+
+def test_another_user_cannot_resolve_someone_elses_mistake(client, db):
+    _signup_and_login(client, "owner2@example.com", "owner2")
+    other_token = _signup_and_login(client, "intruder@example.com", "intruder")
+    owner = db.query(User).filter(User.email == "owner2@example.com").first()
+    question = _create_question(db, "HEADINGS", "READING")
+    mistake = _create_mistake(db, owner.id, question)
+    db.commit()
+
+    response = client.post(
+        f"/api/review/{mistake.id}/resolve",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+
+    assert response.status_code == 404
+    db.refresh(mistake)
+    assert mistake.is_resolved is False

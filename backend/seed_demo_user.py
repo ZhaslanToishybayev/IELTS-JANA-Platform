@@ -248,6 +248,14 @@ def seed_demo_profile(db) -> User:
         for index, question in enumerate(selected_questions[DIAGNOSTIC_TARGET:14])
     ]
     all_attempts = diagnostic_attempts + practice_attempts
+    first_mistake = (
+        db.query(MistakeReview)
+        .filter(MistakeReview.user_id == user.id)
+        .order_by(MistakeReview.created_at.asc())
+        .first()
+    )
+    if first_mistake:
+        first_mistake.is_resolved = True
     weak_skills = _seed_masteries(db, user, all_attempts)
 
     correct_diagnostic = sum(1 for attempt in diagnostic_attempts if attempt.is_correct)

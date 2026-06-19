@@ -154,6 +154,9 @@ python validate_reading_content.py
 python check_content_coverage.py
 ```
 
+Practice mistakes are saved into Mistake Review, where learners can filter
+errors, read explanations, and drill similar Reading question types.
+
 ## 🎮 Features
 
 ### AI-Driven Reading Practice
