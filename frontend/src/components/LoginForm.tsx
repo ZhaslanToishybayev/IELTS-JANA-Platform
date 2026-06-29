@@ -74,7 +74,7 @@ export function LoginForm() {
                     </div>
 
                     <h1 className="text-5xl font-extrabold leading-tight mb-6">
-                        Master your IELTS Reading with AI.
+                        Master your IELTS with Personalized AI Plans.
                     </h1>
                     <p className="text-blue-100 text-xl max-w-lg leading-relaxed">
                         Take a short diagnostic, find weak Reading question types, and follow a practical daily plan.
@@ -216,7 +216,7 @@ export function LoginForm() {
                                 className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg px-4 py-3 text-sm flex items-center gap-2"
                             >
                                 <Lock className="w-4 h-4" />
-                                {error}
+                                {typeof error === 'string' ? error : 'Authentication failed. Please check your credentials.'}
                             </motion.div>
                         )}
 
