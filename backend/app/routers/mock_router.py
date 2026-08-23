@@ -108,8 +108,8 @@ def get_mock_writing_prompts_all(
     current_user: dict = Depends(get_current_user),
 ):
     """Return one random Task 1 + one random Task 2 prompt for a full writing section."""
-    task1 = _random_prompt(db, WritingPrompt, {"task_type": "TASK_1"})
-    task2 = _random_prompt(db, WritingPrompt, {"task_type": "TASK_2"})
+    task1 = _random_prompt(db, WritingPrompt, {"task_type": "Task 1"})
+    task2 = _random_prompt(db, WritingPrompt, {"task_type": "Task 2"})
     if not task1 and not task2:
         raise HTTPException(status_code=404, detail="No writing prompts available")
     return {
