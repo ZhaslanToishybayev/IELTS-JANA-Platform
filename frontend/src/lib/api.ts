@@ -175,6 +175,21 @@ export interface NewAchievement {
     rarity: string;
 }
 
+export interface MockSessionResult {
+    scores: {
+        listening?: number;
+        listening_raw?: { correct: number; total: number };
+        reading?: number;
+        reading_raw?: { correct: number; total: number };
+        writing?: number;
+        writing_raw?: { words: number; feedback?: string; criteria?: Record<string, unknown> };
+        speaking?: number;
+        speaking_raw?: { words: number; sentences?: number; unique_words?: number; feedback?: Record<string, unknown> };
+        overall?: number;
+    };
+    status: string;
+}
+
 export interface DiagnosticSubmitResult {
     id: number;
     question_id: number;
@@ -673,7 +688,7 @@ class ApiClient {
     }
 
     async submitMockListening(token: string, sessionId: string, answers: Record<string, unknown>) {
-        return this.fetch(`/mock/${sessionId}/listening`, {
+        return this.fetch<MockSessionResult>(`/mock/${sessionId}/listening`, {
             method: 'POST',
             token,
             body: JSON.stringify(answers) // Sends { "q_1": "answer" } directly as dict
@@ -681,7 +696,7 @@ class ApiClient {
     }
 
     async submitMockReading(token: string, sessionId: string, answers: Record<string, unknown>) {
-        return this.fetch(`/mock/${sessionId}/reading`, {
+        return this.fetch<MockSessionResult>(`/mock/${sessionId}/reading`, {
             method: 'POST',
             token,
             body: JSON.stringify(answers)
@@ -689,7 +704,7 @@ class ApiClient {
     }
 
     async submitMockWriting(token: string, sessionId: string, text: string) {
-        return this.fetch(`/mock/${sessionId}/writing`, {
+        return this.fetch<MockSessionResult>(`/mock/${sessionId}/writing`, {
             method: 'POST',
             token,
             body: JSON.stringify({ text })
@@ -697,7 +712,7 @@ class ApiClient {
     }
 
     async submitMockSpeaking(token: string, sessionId: string, transcript: string) {
-        return this.fetch(`/mock/${sessionId}/speaking`, {
+        return this.fetch<MockSessionResult>(`/mock/${sessionId}/speaking`, {
             method: 'POST',
             token,
             body: JSON.stringify({ transcript })

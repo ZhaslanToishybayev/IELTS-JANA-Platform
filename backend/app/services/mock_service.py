@@ -159,30 +159,17 @@ class MockExamService:
         session.answers = current_answers
         flag_modified(session, "answers")
 
-        import asyncio
         from app.services.writing_service import evaluate_essay_locally, _valid_writing_result
 
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    result = pool.submit(
-                        asyncio.run,
-                        self._evaluate_writing(essay_text)
-                    ).result(timeout=30)
-            else:
-                result = loop.run_until_complete(self._evaluate_writing(essay_text))
-        except Exception:
-            result = _valid_writing_result(evaluate_essay_locally(essay_text, "Task 2", ""))
-
+        result = _valid_writing_result(evaluate_essay_locally(essay_text, "Task 2", ""))
         score = result.get("band_score", 5.0) if result else 5.0
 
+        word_count = len([w for w in essay_text.split() if w.strip()])
         current_scores = dict(session.scores or {})
         current_scores["writing"] = score
         current_scores["writing_raw"] = {
-            "words": len([w for w in essay_text.split() if w.strip]),
-            "feedback": result.get("overall_feedback", ""),
+            "words": word_count,
+            "feedback": result.get("overall_feedback", "") if result else "",
             "criteria": {
                 k: {"score": v.get("score", 0), "comment": v.get("comment", "")}
                 for k, v in result.items()
@@ -196,10 +183,6 @@ class MockExamService:
         db.refresh(session)
         return session
 
-    async def _evaluate_writing(self, essay_text: str):
-        from app.services.writing_service import evaluate_essay_with_gemini
-        return await evaluate_essay_with_gemini(essay_text, "Task 2", "")
-
     def submit_speaking(self, db: Session, session: MockTestSession, transcript: str):
         if (session.scores or {}).get("speaking") is not None:
             return session
@@ -209,19 +192,29 @@ class MockExamService:
         flag_modified(session, "answers")
 
         word_count = len([w for w in transcript.split() if w.strip()])
-        band = 6.5 if word_count >= 180 else 6.0 if word_count >= 120 else 5.0 if word_count >= 70 else 4.0
+        sentences = [s.strip() for s in transcript.replace("?", ".").replace("!", ".").split(".") if s.strip()]
+        unique_words = len({w.lower().strip(".,;:!?") for w in transcript.split()})
+
+        # More nuanced scoring based on multiple factors
+        length_score = 6.5 if word_count >= 180 else 6.0 if word_count >= 120 else 5.0 if word_count >= 70 else 4.0
+        variety_score = 6.5 if unique_words / max(word_count, 1) >= 0.6 else 6.0 if unique_words / max(word_count, 1) >= 0.45 else 5.0
+        coherence_score = 6.5 if len(sentences) >= 8 else 6.0 if len(sentences) >= 5 else 5.0 if len(sentences) >= 3 else 4.0
+        band = round((length_score + variety_score + coherence_score) * 2 / 3) / 2
+
         feedback = {
-            "fluency_coherence": {"score": band, "comment": f"Based on {word_count} words spoken."},
-            "lexical_resource": {"score": band, "comment": "Score estimated from transcript length."},
-            "grammatical_range": {"score": band, "comment": "Score estimated from transcript length."},
-            "pronunciation": {"score": band, "comment": "Audio analysis not available in mock exam."},
-            "overall_feedback": f"Mock exam speaking estimate: {band} band based on {word_count} words. Use the dedicated speaking practice for full AI audio analysis.",
+            "fluency_coherence": {"score": coherence_score, "comment": f"{len(sentences)} sentences, {word_count} words spoken."},
+            "lexical_resource": {"score": variety_score, "comment": f"{unique_words} unique words out of {word_count} total."},
+            "grammatical_range": {"score": length_score, "comment": "Score estimated from response length and structure."},
+            "pronunciation": {"score": band, "comment": "Audio analysis required for precise pronunciation scoring."},
+            "overall_feedback": f"Speaking response: {word_count} words, {len(sentences)} sentences, estimated band {band}. For full AI audio analysis, use the dedicated speaking practice.",
         }
 
         current_scores = dict(session.scores or {})
         current_scores["speaking"] = band
         current_scores["speaking_raw"] = {
             "words": word_count,
+            "sentences": len(sentences),
+            "unique_words": unique_words,
             "feedback": feedback,
         }
         current_scores["overall"] = overall_band([

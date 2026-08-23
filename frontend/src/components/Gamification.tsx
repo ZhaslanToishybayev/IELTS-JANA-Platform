@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ReactNode } from 'react';
 import { useSoundEffects } from '@/hooks/useSoundEffects';
