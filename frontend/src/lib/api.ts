@@ -736,6 +736,33 @@ class ApiClient {
         }>(`/mock/${sessionId}`, { token });
     }
 
+    async getMockWritingPrompt(token: string, taskType?: string) {
+        const params = taskType ? `?task_type=${taskType}` : '';
+        return this.fetch<{
+            id: number;
+            task_type: string;
+            title: string;
+            prompt_text: string;
+            category: string;
+            word_limit: number;
+            time_limit_minutes: number;
+            tips: string[];
+        }>(`/mock/prompts/writing${params}`, { token });
+    }
+
+    async getMockSpeakingPrompt(token: string, part?: string) {
+        const params = part ? `?part=${part}` : '';
+        return this.fetch<{
+            id: number;
+            part: string;
+            title: string;
+            cue_card: string | null;
+            questions: string[];
+            prep_time_sec: number | null;
+            speak_time_sec: number;
+        }>(`/mock/prompts/speaking${params}`, { token });
+    }
+
     // ============ Achievements ============
     async getAchievements(token: string) {
         return this.fetch<{

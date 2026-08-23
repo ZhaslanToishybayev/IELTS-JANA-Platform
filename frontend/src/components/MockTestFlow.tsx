@@ -9,6 +9,7 @@ import {
     BookOpen,
     PenTool,
     Mic,
+    MicOff,
     Clock,
     CheckCircle2,
     ChevronRight,
@@ -16,9 +17,11 @@ import {
     ArrowLeft,
     Play,
     Pause,
-    RotateCcw,
     AlertCircle,
     FileText,
+    Square,
+    RotateCcw,
+    Volume2,
 } from 'lucide-react';
 import { formatTime } from '@/lib/utils';
 import type { MockSessionResult } from '@/lib/api';
@@ -45,7 +48,7 @@ const SECTIONS: SectionConfig[] = [
 ];
 
 interface MockTestProps {
-    standalone?: boolean; // true = individual section mode, false = full test
+    standalone?: boolean;
     initialSection?: Section;
 }
 
@@ -55,16 +58,17 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
     const [activeSection, setActiveSection] = useState<Section | null>(initialSection || null);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [questions, setQuestions] = useState<any[]>([]);
-    const [answers, setAnswers] = useState<Record<number, string>>({});
+    const [answers, setAnswers] = useState<Record<number | string, string>>({});
     const [timeLeft, setTimeLeft] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
-    const [result, setResult] = useState<any>(null);
-    const [allResults, setAllResults] = useState<Record<Section, any>>({} as any);
+    const [result, setResult] = useState<MockSessionResult | null>(null);
+    const [allResults, setAllResults] = useState<Record<string, MockSessionResult>>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [writingPrompt, setWritingPrompt] = useState<any>(null);
+    const [speakingPrompt, setSpeakingPrompt] = useState<any>(null);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Timer
     useEffect(() => {
         if (phase !== 'TEST' || isPaused || timeLeft <= 0) return;
         timerRef.current = setInterval(() => {
@@ -84,15 +88,24 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
         setLoading(true);
         setError(null);
         try {
-            // Create or resume session
             if (!sessionId) {
                 const session = await api.startMockExam(token);
                 setSessionId(session.id);
             }
 
-            // Fetch questions for this section
-            const data = await api.getMockQuestions(token, section, section === 'LISTENING' ? 40 : section === 'READING' ? 40 : 2, sessionId || undefined);
-            setQuestions(data.questions || []);
+            if (section === 'WRITING') {
+                const prompt = await api.getMockWritingPrompt(token);
+                setWritingPrompt(prompt);
+                setQuestions([{ id: 'essay', text: prompt.prompt_text, type: 'ESSAY', options: null, passage: null, passage_title: prompt.title, audio_url: null, section: null }]);
+            } else if (section === 'SPEAKING') {
+                const prompt = await api.getMockSpeakingPrompt(token);
+                setSpeakingPrompt(prompt);
+                setQuestions([{ id: 'speech', text: prompt.cue_card || prompt.questions?.[0] || 'Speak about the topic', type: 'SPEECH', options: null, passage: null, passage_title: prompt.title, audio_url: null, section: null }]);
+            } else {
+                const data = await api.getMockQuestions(token, section, section === 'LISTENING' ? 40 : 40, sessionId || undefined);
+                setQuestions(data.questions || []);
+            }
+
             setAnswers({});
             setActiveSection(section);
             const config = SECTIONS.find(s => s.id === section)!;
@@ -108,7 +121,7 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
 
     const beginTest = () => setPhase('TEST');
 
-    const setAnswer = (questionId: number, answer: string) => {
+    const setAnswer = (questionId: number | string, answer: string) => {
         setAnswers(prev => ({ ...prev, [questionId]: answer }));
     };
 
@@ -128,14 +141,16 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
                 Object.entries(answers).forEach(([qid, ans]) => { answerDict[`q_${qid}`] = ans; });
                 res = await api.submitMockReading(token, sessionId, answerDict);
             } else if (activeSection === 'WRITING') {
-                const essayText = Object.values(answers).join('\n\n');
+                const essayText = answers['essay'] || '';
                 res = await api.submitMockWriting(token, sessionId, essayText);
             } else if (activeSection === 'SPEAKING') {
-                const transcript = Object.values(answers).join('\n\n');
+                const transcript = answers['speech'] || '';
                 res = await api.submitMockSpeaking(token, sessionId, transcript);
             }
-            setResult(res);
-            setAllResults(prev => ({ ...prev, [activeSection]: res }));
+            if (res) {
+                setResult(res);
+                setAllResults(prev => ({ ...prev, [activeSection]: res! }));
+            }
             setPhase('REVIEW');
         } catch (err: any) {
             setError(err.message || 'Failed to submit');
@@ -150,6 +165,8 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
         setResult(null);
         setQuestions([]);
         setAnswers({});
+        setWritingPrompt(null);
+        setSpeakingPrompt(null);
     };
 
     const goToNextSection = () => {
@@ -214,9 +231,9 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
                                             {completed ? 'Retake Section' : 'Start Section'}
                                             <ChevronRight className="w-4 h-4" />
                                         </div>
-                                        {completed && allResults[section.id]?.scores?.[section.title.toLowerCase()] && (
+                                        {completed && (allResults[section.id]?.scores as any)?.[section.title.toLowerCase()] && (
                                             <div className="mt-3 text-sm font-black text-emerald-600">
-                                                Band: {allResults[section.id].scores[section.title.toLowerCase()]}
+                                                Band: {(allResults[section.id]?.scores as any)?.[section.title.toLowerCase()]}
                                             </div>
                                         )}
                                     </motion.button>
@@ -237,24 +254,50 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
 
                 {phase === 'PREP' && activeSection && (
                     <motion.div key="prep" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-                        <PrepScreen section={activeSection} onStart={beginTest} onBack={goToLanding} />
+                        <PrepScreen section={activeSection} onStart={beginTest} onBack={goToLanding} writingPrompt={writingPrompt} speakingPrompt={speakingPrompt} />
                     </motion.div>
                 )}
 
                 {phase === 'TEST' && activeSection && (
                     <motion.div key="test" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <TestScreen
-                            section={activeSection}
-                            questions={questions}
-                            answers={answers}
-                            setAnswer={setAnswer}
-                            timeLeft={timeLeft}
-                            isPaused={isPaused}
-                            setIsPaused={setIsPaused}
-                            onSubmit={handleSubmit}
-                            loading={loading}
-                            error={error}
-                        />
+                        {activeSection === 'WRITING' ? (
+                            <WritingTestScreen
+                                prompt={writingPrompt}
+                                essay={answers['essay'] || ''}
+                                setEssay={(text) => setAnswer('essay', text)}
+                                timeLeft={timeLeft}
+                                isPaused={isPaused}
+                                setIsPaused={setIsPaused}
+                                onSubmit={handleSubmit}
+                                loading={loading}
+                                error={error}
+                            />
+                        ) : activeSection === 'SPEAKING' ? (
+                            <SpeakingTestScreen
+                                prompt={speakingPrompt}
+                                transcript={answers['speech'] || ''}
+                                setTranscript={(text) => setAnswer('speech', text)}
+                                timeLeft={timeLeft}
+                                isPaused={isPaused}
+                                setIsPaused={setIsPaused}
+                                onSubmit={handleSubmit}
+                                loading={loading}
+                                error={error}
+                            />
+                        ) : (
+                            <TestScreen
+                                section={activeSection}
+                                questions={questions}
+                                answers={answers}
+                                setAnswer={setAnswer}
+                                timeLeft={timeLeft}
+                                isPaused={isPaused}
+                                setIsPaused={setIsPaused}
+                                onSubmit={handleSubmit}
+                                loading={loading}
+                                error={error}
+                            />
+                        )}
                     </motion.div>
                 )}
 
@@ -275,7 +318,10 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
 }
 
 // ========== PREP SCREEN ==========
-function PrepScreen({ section, onStart, onBack }: { section: Section; onStart: () => void; onBack: () => void }) {
+function PrepScreen({ section, onStart, onBack, writingPrompt, speakingPrompt }: {
+    section: Section; onStart: () => void; onBack: () => void;
+    writingPrompt?: any; speakingPrompt?: any;
+}) {
     const config = SECTIONS.find(s => s.id === section)!;
     const Icon = config.icon;
 
@@ -293,16 +339,16 @@ function PrepScreen({ section, onStart, onBack }: { section: Section; onStart: (
             'Answer ALL questions — no penalty for wrong answers.',
         ],
         WRITING: [
-            'Task 1: Write at least 150 words describing a graph/chart/process. (20 min)',
-            'Task 2: Write at least 250 words on an essay topic. (40 min)',
-            'Plan before writing. Organize into paragraphs.',
-            'Spend 3-5 minutes reviewing your work.',
+            'Read the prompt carefully before writing.',
+            'Write at least the required number of words.',
+            'Organize your essay into clear paragraphs.',
+            'Spend a few minutes reviewing your work.',
         ],
         SPEAKING: [
-            'Part 1: General questions about yourself (4-5 min).',
-            'Part 2: Long turn — speak for 1-2 min on a cue card topic.',
-            'Part 3: Abstract discussion related to Part 2 topic (4-5 min).',
-            'Speak clearly and extend your answers with examples.',
+            'Listen to the questions carefully.',
+            'Speak clearly and extend your answers.',
+            'For Part 2, use the preparation time wisely.',
+            'Give examples to support your points.',
         ],
     };
 
@@ -322,6 +368,50 @@ function PrepScreen({ section, onStart, onBack }: { section: Section; onStart: (
                     <span className="font-bold">{formatTime(config.duration)} time limit</span>
                 </div>
             </div>
+
+            {section === 'WRITING' && writingPrompt && (
+                <div className="card p-6 mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                        <FileText className="w-5 h-5 text-amber-500" />
+                        <span className="font-black text-slate-900 dark:text-white">Your Writing Prompt</span>
+                    </div>
+                    <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-2">{writingPrompt.title}</h3>
+                    <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed whitespace-pre-wrap">{writingPrompt.prompt_text}</p>
+                    <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
+                        <span className="font-bold">Min {writingPrompt.word_limit} words</span>
+                        <span className="font-bold">{writingPrompt.time_limit_minutes} min</span>
+                        {writingPrompt.category && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{writingPrompt.category}</span>}
+                    </div>
+                </div>
+            )}
+
+            {section === 'SPEAKING' && speakingPrompt && (
+                <div className="card p-6 mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Mic className="w-5 h-5 text-rose-500" />
+                        <span className="font-black text-slate-900 dark:text-white">Your Speaking Topic</span>
+                    </div>
+                    <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-2">{speakPrompt(speakingPrompt)}</h3>
+                    {speakingPrompt.cue_card && (
+                        <div className="mt-3 p-4 bg-rose-50 dark:bg-rose-900/10 rounded-xl border border-rose-200 dark:border-rose-800">
+                            <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{speakingPrompt.cue_card}</p>
+                        </div>
+                    )}
+                    {speakingPrompt.questions?.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                            {speakingPrompt.questions.map((q: string, i: number) => (
+                                <div key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                                    <span className="font-black text-rose-500 shrink-0">Q{i + 1}.</span> {q}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
+                        <span className="font-bold">Part: {speakPartLabel(speakingPrompt.part)}</span>
+                        {speakingPrompt.speak_time_sec && <span className="font-bold">{speakingPrompt.speak_time_sec}s speaking time</span>}
+                    </div>
+                </div>
+            )}
 
             <div className="card p-8 mb-8">
                 <h3 className="font-black text-slate-900 dark:text-white mb-4 flex items-center gap-2">
@@ -346,12 +436,22 @@ function PrepScreen({ section, onStart, onBack }: { section: Section; onStart: (
     );
 }
 
-// ========== TEST SCREEN ==========
+function speakPrompt(p: any): string {
+    if (p.title) return p.title;
+    if (p.part) return `Part ${p.part.replace('PART_', '')}`;
+    return 'Speaking Task';
+}
+
+function speakPartLabel(part: string): string {
+    return part.replace('PART_', '').replace('_', ' ');
+}
+
+// ========== TEST SCREEN (Listening/Reading) ==========
 function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
     section: Section;
     questions: any[];
-    answers: Record<number, string>;
-    setAnswer: (id: number, answer: string) => void;
+    answers: Record<number | string, string>;
+    setAnswer: (id: number | string, answer: string) => void;
     timeLeft: number;
     isPaused: boolean;
     setIsPaused: (paused: boolean) => void;
@@ -363,9 +463,10 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
     const answeredCount = Object.keys(answers).length;
     const pct = Math.round((answeredCount / Math.max(questions.length, 1)) * 100);
 
+    const groupedQuestions = section === 'READING' ? groupByPassage(questions) : null;
+
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)]">
-            {/* Top Bar */}
             <div className="card p-4 mb-4 flex items-center justify-between sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
                 <div className="flex items-center gap-4">
                     <h3 className="font-black text-slate-900 dark:text-white">{config.title}</h3>
@@ -382,26 +483,49 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                 </div>
             </div>
 
-            {/* Progress Bar */}
             <div className="h-1 bg-slate-100 dark:bg-slate-800 rounded-full mb-4 overflow-hidden">
                 <motion.div className="h-full bg-blue-600 rounded-full" animate={{ width: `${pct}%` }} />
             </div>
 
-            {/* Questions */}
             <div className="flex-1 overflow-y-auto space-y-4 pb-4">
-                {questions.map((q, idx) => (
-                    <QuestionCard
-                        key={q.id}
-                        question={q}
-                        index={idx}
-                        answer={answers[q.id] || ''}
-                        onAnswer={(ans) => setAnswer(q.id, ans)}
-                        section={section}
-                    />
-                ))}
+                {groupedQuestions ? (
+                    groupedQuestions.map((group, gIdx) => (
+                        <div key={gIdx} className="space-y-4">
+                            {group.passage && (
+                                <div className="card p-6">
+                                    <h4 className="font-black text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                                        <BookOpen className="w-4 h-4 text-purple-500" />
+                                        {group.passage_title || `Passage ${gIdx + 1}`}
+                                    </h4>
+                                    <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">{group.passage}</div>
+                                </div>
+                            )}
+                            {group.questions.map((q: any, idx: number) => (
+                                <QuestionCard
+                                    key={q.id}
+                                    question={q}
+                                    index={group.offset + idx}
+                                    answer={answers[q.id] || ''}
+                                    onAnswer={(ans) => setAnswer(q.id, ans)}
+                                    section={section}
+                                />
+                            ))}
+                        </div>
+                    ))
+                ) : (
+                    questions.map((q, idx) => (
+                        <QuestionCard
+                            key={q.id}
+                            question={q}
+                            index={idx}
+                            answer={answers[q.id] || ''}
+                            onAnswer={(ans) => setAnswer(q.id, ans)}
+                            section={section}
+                        />
+                    ))
+                )}
             </div>
 
-            {/* Submit */}
             <div className="card p-4 mt-4 flex items-center justify-between">
                 <span className="text-sm text-slate-500 font-bold">
                     {answeredCount < questions.length
@@ -422,6 +546,22 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
     );
 }
 
+function groupByPassage(questions: any[]): { passage: string | null; passage_title: string | null; questions: any[]; offset: number }[] {
+    const groups: { passage: string | null; passage_title: string | null; questions: any[]; offset: number }[] = [];
+    let current: any = null;
+    let offset = 0;
+    for (const q of questions) {
+        const key = q.passage || '__none__';
+        if (!current || current.passage !== (q.passage || null)) {
+            current = { passage: q.passage || null, passage_title: q.passage_title || null, questions: [], offset };
+            groups.push(current);
+        }
+        current.questions.push(q);
+        offset++;
+    }
+    return groups;
+}
+
 // ========== QUESTION CARD ==========
 function QuestionCard({ question, index, answer, onAnswer, section }: {
     question: any;
@@ -433,7 +573,6 @@ function QuestionCard({ question, index, answer, onAnswer, section }: {
     const options: string[] = question.options || [];
     const isTFNG = question.type === 'TF_NG';
     const isMCQ = question.type === 'MCQ' || options.length > 0;
-    const isHeadings = question.type === 'HEADINGS';
     const isListening = section === 'LISTENING';
 
     return (
@@ -451,7 +590,6 @@ function QuestionCard({ question, index, answer, onAnswer, section }: {
                 </div>
             </div>
 
-            {/* MCQ Options */}
             {isMCQ && !isTFNG && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 ml-11">
                     {options.map((opt: string, i: number) => {
@@ -474,7 +612,6 @@ function QuestionCard({ question, index, answer, onAnswer, section }: {
                 </div>
             )}
 
-            {/* TF/NG Options */}
             {isTFNG && (
                 <div className="flex gap-3 ml-11">
                     {['TRUE', 'FALSE', 'NOT GIVEN'].map((opt) => (
@@ -493,7 +630,6 @@ function QuestionCard({ question, index, answer, onAnswer, section }: {
                 </div>
             )}
 
-            {/* Free Text Input */}
             {!isMCQ && !isTFNG && (
                 <div className="ml-11">
                     <input
@@ -509,12 +645,301 @@ function QuestionCard({ question, index, answer, onAnswer, section }: {
     );
 }
 
+// ========== WRITING TEST SCREEN ==========
+function WritingTestScreen({ prompt, essay, setEssay, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
+    prompt: any;
+    essay: string;
+    setEssay: (text: string) => void;
+    timeLeft: number;
+    isPaused: boolean;
+    setIsPaused: (paused: boolean) => void;
+    onSubmit: () => void;
+    loading: boolean;
+    error: string | null;
+}) {
+    const wordCount = essay.trim() ? essay.trim().split(/\s+/).length : 0;
+    const minWords = prompt?.word_limit || 250;
+    const hasEnoughWords = wordCount >= minWords;
+
+    return (
+        <div className="flex flex-col h-[calc(100vh-8rem)]">
+            <div className="card p-4 mb-4 flex items-center justify-between sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
+                <div className="flex items-center gap-4">
+                    <h3 className="font-black text-slate-900 dark:text-white">Writing</h3>
+                    <span className={`text-sm font-bold ${hasEnoughWords ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {wordCount}/{minWords} words
+                    </span>
+                </div>
+                <div className="flex items-center gap-4">
+                    <div className={`flex items-center gap-2 font-mono text-lg font-black ${timeLeft < 300 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
+                        <Clock className="w-5 h-5" />
+                        {formatTime(timeLeft)}
+                    </div>
+                    <button onClick={() => setIsPaused(!isPaused)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                        {isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+                    </button>
+                </div>
+            </div>
+
+            {prompt && (
+                <div className="card p-5 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                        <PenTool className="w-4 h-4 text-amber-500" />
+                        <span className="font-black text-slate-900 dark:text-white text-sm">{prompt.title}</span>
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap">{prompt.prompt_text}</p>
+                </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto">
+                <textarea
+                    value={essay}
+                    onChange={(e) => setEssay(e.target.value)}
+                    placeholder="Write your essay here..."
+                    className="w-full h-full min-h-[300px] bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-4 text-slate-900 dark:text-white text-base leading-relaxed focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition resize-none"
+                />
+            </div>
+
+            <div className="card p-4 mt-4 flex items-center justify-between">
+                <div className="flex items-center gap-4 text-sm">
+                    <span className={`font-bold ${hasEnoughWords ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {wordCount} words
+                    </span>
+                    {!hasEnoughWords && (
+                        <span className="text-amber-500">Need {minWords - wordCount} more words</span>
+                    )}
+                </div>
+                <button
+                    onClick={onSubmit}
+                    disabled={loading || wordCount === 0}
+                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20"
+                >
+                    {loading ? 'Submitting...' : 'Submit Essay'}
+                </button>
+            </div>
+
+            {error && <div className="card p-4 mt-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 text-sm">{error}</div>}
+        </div>
+    );
+}
+
+// ========== SPEAKING TEST SCREEN ==========
+function SpeakingTestScreen({ prompt, transcript, setTranscript, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
+    prompt: any;
+    transcript: string;
+    setTranscript: (text: string) => void;
+    timeLeft: number;
+    isPaused: boolean;
+    setIsPaused: (paused: boolean) => void;
+    onSubmit: () => void;
+    loading: boolean;
+    error: string | null;
+}) {
+    const [isRecording, setIsRecording] = useState(false);
+    const [audioURL, setAudioURL] = useState<string | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const chunksRef = useRef<Blob[]>([]);
+    const streamRef = useRef<MediaStream | null>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const recognitionRef = useRef<any>(null);
+
+    const transcriptRef = useRef(transcript);
+    transcriptRef.current = transcript;
+
+    const wordCount = transcript.trim() ? transcript.trim().split(/\s+/).length : 0;
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            chunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunksRef.current.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+                setAudioURL(URL.createObjectURL(blob));
+                stream.getTracks().forEach(t => t.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+
+            try {
+                const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                if (SpeechRecognition) {
+                    const recognition = new SpeechRecognition();
+                    recognition.continuous = true;
+                    recognition.interimResults = true;
+                    recognition.lang = 'en-GB';
+                    recognition.onresult = (event: any) => {
+                        let finalTranscript = '';
+                        for (let i = 0; i < event.results.length; i++) {
+                            if (event.results[i].isFinal) {
+                                finalTranscript += event.results[i][0].transcript + ' ';
+                            }
+                        }
+                        if (finalTranscript) {
+                            setTranscript((transcriptRef.current + ' ' + finalTranscript).trim());
+                        }
+                    };
+                    recognition.onerror = () => {};
+                    recognition.start();
+                    recognitionRef.current = recognition;
+                }
+            } catch {}
+        } catch (err) {
+            console.error('Microphone access denied:', err);
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+        }
+        if (recognitionRef.current) {
+            try { recognitionRef.current.stop(); } catch {}
+        }
+        setIsRecording(false);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (recognitionRef.current) {
+                try { recognitionRef.current.stop(); } catch {}
+            }
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(t => t.stop());
+            }
+        };
+    }, []);
+
+    return (
+        <div className="flex flex-col h-[calc(100vh-8rem)]">
+            <div className="card p-4 mb-4 flex items-center justify-between sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
+                <div className="flex items-center gap-4">
+                    <h3 className="font-black text-slate-900 dark:text-white">Speaking</h3>
+                    <span className="text-sm text-slate-500 font-bold">{wordCount} words transcribed</span>
+                </div>
+                <div className="flex items-center gap-4">
+                    <div className={`flex items-center gap-2 font-mono text-lg font-black ${timeLeft < 300 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
+                        <Clock className="w-5 h-5" />
+                        {formatTime(timeLeft)}
+                    </div>
+                    <button onClick={() => setIsPaused(!isPaused)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                        {isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+                    </button>
+                </div>
+            </div>
+
+            {prompt && (
+                <div className="card p-5 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Mic className="w-4 h-4 text-rose-500" />
+                        <span className="font-black text-slate-900 dark:text-white text-sm">{prompt.title || `Part ${prompt.part}`}</span>
+                    </div>
+                    {prompt.cue_card && (
+                        <div className="p-4 bg-rose-50 dark:bg-rose-900/10 rounded-xl border border-rose-200 dark:border-rose-800 mb-3">
+                            <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{prompt.cue_card}</p>
+                        </div>
+                    )}
+                    {prompt.questions?.length > 0 && (
+                        <div className="space-y-2">
+                            {prompt.questions.map((q: string, i: number) => (
+                                <div key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                                    <span className="font-black text-rose-500 shrink-0">Q{i + 1}.</span> {q}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div className="flex-1 flex flex-col gap-4 overflow-y-auto">
+                <div className="card p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                            <Mic className="w-4 h-4 text-rose-500" />
+                            Voice Recording
+                        </span>
+                        <div className="flex items-center gap-2">
+                            {!isRecording ? (
+                                <button
+                                    onClick={startRecording}
+                                    className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition"
+                                >
+                                    <Mic className="w-4 h-4" /> Start Recording
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={stopRecording}
+                                    className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition"
+                                >
+                                    <Square className="w-4 h-4" /> Stop
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    {isRecording && (
+                        <div className="flex items-center gap-3 p-3 bg-rose-50 dark:bg-rose-900/10 rounded-xl">
+                            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                            <span className="text-sm font-bold text-rose-600">Recording... Speak now</span>
+                        </div>
+                    )}
+                    {audioURL && !isRecording && (
+                        <div className="mt-3">
+                            <audio controls src={audioURL} className="w-full h-10" />
+                        </div>
+                    )}
+                </div>
+
+                <div className="card p-4 flex-1">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-slate-400" />
+                            Transcript
+                        </span>
+                        <span className={`text-xs font-bold ${transcript.trim() ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            {wordCount} words
+                        </span>
+                    </div>
+                    <textarea
+                        ref={textareaRef}
+                        value={transcript}
+                        onChange={(e) => setTranscript(e.target.value)}
+                        placeholder="Your speech will be transcribed here automatically, or type manually..."
+                        className="w-full min-h-[120px] bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm leading-relaxed focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition resize-none"
+                    />
+                </div>
+            </div>
+
+            <div className="card p-4 mt-4 flex items-center justify-between">
+                <span className="text-sm text-slate-500 font-bold">
+                    {transcript.trim() ? 'Ready to submit' : 'Record or type your response'}
+                </span>
+                <button
+                    onClick={onSubmit}
+                    disabled={loading || !transcript.trim()}
+                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20"
+                >
+                    {loading ? 'Submitting...' : 'Submit Response'}
+                </button>
+            </div>
+
+            {error && <div className="card p-4 mt-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 text-sm">{error}</div>}
+        </div>
+    );
+}
+
 // ========== REVIEW SCREEN ==========
-function ReviewScreen({ section, result, onContinue, onBack }: { section: Section; result: any; onContinue: () => void; onBack: () => void }) {
+function ReviewScreen({ section, result, onContinue, onBack }: { section: Section; result: MockSessionResult; onContinue: () => void; onBack: () => void }) {
     const config = SECTIONS.find(s => s.id === section)!;
-    const scores = result?.scores || {};
-    const sectionScore = scores[section.toLowerCase()] || scores.listening || scores.reading || 0;
-    const raw = result?.[`${section.toLowerCase()}_raw`] || {};
+    const scores = (result?.scores || {}) as Record<string, any>;
+    const sectionScore = scores[section.toLowerCase()] || 0;
+    const raw = scores[`${section.toLowerCase()}_raw`] || {};
 
     return (
         <div className="max-w-2xl mx-auto py-10 text-center">
@@ -532,16 +957,17 @@ function ReviewScreen({ section, result, onContinue, onBack }: { section: Sectio
                     </div>
                 )}
 
-                {result?.writing_raw && (
+                {raw.words !== undefined && raw.feedback && (
                     <div className="mt-6 text-sm text-slate-500">
-                        <span className="font-bold">{result.writing_raw.words} words</span>
-                        {result.writing_raw.feedback && <p className="mt-2 text-left max-w-md mx-auto">{result.writing_raw.feedback}</p>}
+                        <span className="font-bold">{raw.words} words</span>
+                        <p className="mt-2 text-left max-w-md mx-auto">{raw.feedback}</p>
                     </div>
                 )}
 
-                {result?.speaking_raw && (
+                {raw.words !== undefined && raw.sentences && (
                     <div className="mt-6 text-sm text-slate-500">
-                        <span className="font-bold">{result.speaking_raw.words} words spoken</span>
+                        <span className="font-bold">{raw.words} words spoken</span>
+                        <span className="text-slate-400 ml-2">({raw.sentences} sentences)</span>
                     </div>
                 )}
             </motion.div>
@@ -559,16 +985,17 @@ function ReviewScreen({ section, result, onContinue, onBack }: { section: Sectio
 }
 
 // ========== RESULTS SCREEN ==========
-function ResultsScreen({ results, onBack }: { results: Record<Section, any>; onBack: () => void }) {
-    const sectionEntries = Object.entries(results) as [Section, any][];
+function ResultsScreen({ results, onBack }: { results: Record<string, MockSessionResult>; onBack: () => void }) {
+    const sectionEntries = Object.entries(results);
     const scores = sectionEntries.map(([sec, res]) => {
         const s = res?.scores || {};
+        const config = SECTIONS.find(s2 => s2.id === sec.toUpperCase() as Section);
         return {
             section: sec,
-            band: s[sec.toLowerCase()] || s.listening || s.reading || 0,
-            config: SECTIONS.find(s2 => s2.id === sec)!,
+            band: (s as any)[sec] || 0,
+            config,
         };
-    });
+    }).filter(s => s.config);
     const overall = scores.length > 0
         ? (scores.reduce((sum, s) => sum + (typeof s.band === 'number' ? s.band : 0), 0) / scores.length).toFixed(1)
         : '—';
@@ -588,6 +1015,7 @@ function ResultsScreen({ results, onBack }: { results: Record<Section, any>; onB
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {scores.map(({ section, band, config }) => {
+                    if (!config) return null;
                     const Icon = config.icon;
                     return (
                         <div key={section} className="card p-6 text-center">
