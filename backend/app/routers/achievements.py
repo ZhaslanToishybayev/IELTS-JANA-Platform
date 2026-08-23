@@ -85,6 +85,7 @@ async def check_new_achievements(
 
 @router.post("/seed", include_in_schema=False)
 async def seed_achievement_definitions(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Seed achievement definitions (admin only, hidden from docs)."""

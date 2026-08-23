@@ -52,7 +52,13 @@ export function LoginForm() {
         setDemoLoading(true);
 
         try {
-            await login('demo@ieltsjana.local', 'DemoPass123');
+            const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || 'demo@ieltsjana.local';
+            const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || '';
+            if (!demoPassword) {
+                setError('Demo account is not configured. Set NEXT_PUBLIC_DEMO_PASSWORD.');
+                return;
+            }
+            await login(demoEmail, demoPassword);
             router.push('/dashboard');
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'Demo account is not ready. Run the demo seed script first.');

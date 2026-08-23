@@ -1,28 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import type { WritingEvaluationResponse } from '@/lib/api';
 import { EssayFeedback } from '@/components/EssayFeedback';
 import {
     ArrowLeft,
     PenTool,
     Clock,
     FileText,
-    Target,
     CheckCircle2,
     AlertCircle,
     ChevronRight,
     Sparkles,
-    Zap,
-    BookOpen,
     Info,
     History,
     TrendingUp,
     Award
 } from 'lucide-react';
-import Link from 'next/link';
 
 const WRITING_PROMPTS = [
     {
@@ -76,7 +73,7 @@ type WritingPrompt = typeof WRITING_PROMPTS[number];
 type WritingHistoryItem = Awaited<ReturnType<typeof api.getWritingHistory>>['attempts'][number];
 
 export default function WritingPage() {
-    const { user, token } = useAuth();
+    const { user, token, loading } = useAuth();
     const [prompts, setPrompts] = useState<WritingPrompt[]>(WRITING_PROMPTS);
     const [selectedPrompt, setSelectedPrompt] = useState<WritingPrompt | null>(null);
     const [essay, setEssay] = useState('');
@@ -84,7 +81,7 @@ export default function WritingPage() {
     const [timeLeft, setTimeLeft] = useState(0);
     const [isWriting, setIsWriting] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
-    const [checkResult, setCheckResult] = useState<any>(null);
+    const [checkResult, setCheckResult] = useState<WritingEvaluationResponse | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [history, setHistory] = useState<WritingHistoryItem[]>([]);
     const [error, setError] = useState<string | null>(null);
@@ -114,6 +111,7 @@ export default function WritingPage() {
             submitEssay();
         }
         return () => clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isWriting, timeLeft]);
 
     const startWriting = (prompt: WritingPrompt) => {
@@ -162,6 +160,14 @@ export default function WritingPage() {
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
+
+    if (loading) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     if (!user) return null;
 
@@ -321,7 +327,7 @@ export default function WritingPage() {
                                     </h4>
 
                                     <div className="space-y-6">
-                                        {checkResult.annotated_errors?.length > 0 ? (
+                                        {checkResult.annotated_errors && checkResult.annotated_errors.length > 0 ? (
                                             <EssayFeedback essayText={essay} errors={checkResult.annotated_errors} />
                                         ) : (
                                             <div className="p-8 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 text-center space-y-3">

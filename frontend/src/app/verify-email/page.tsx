@@ -17,7 +17,7 @@ export default function VerifyEmailPage() {
             verifyEmail(token);
         } else {
             setStatus('error');
-            setMessage('Токен не найден в URL');
+            setMessage('Token not found in URL');
         }
     }, [searchParams]);
 
@@ -28,49 +28,57 @@ export default function VerifyEmailPage() {
             setMessage(result.message);
         } catch (err) {
             setStatus('error');
-            setMessage(err instanceof Error ? err.message : 'Ошибка верификации');
+            setMessage(err instanceof Error ? err.message : 'Verification failed');
         }
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-6">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-6">
             <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 max-w-md w-full text-center"
+                className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 max-w-md w-full text-center shadow-xl"
             >
                 {status === 'loading' && (
                     <>
-                        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-purple-500 mx-auto mb-4"></div>
-                        <h1 className="text-2xl font-bold text-white mb-2">Проверяем...</h1>
-                        <p className="text-gray-400">Подтверждаем ваш email адрес</p>
+                        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Verifying...</h1>
+                        <p className="text-slate-500 dark:text-slate-400">Confirming your email address</p>
                     </>
                 )}
 
                 {status === 'success' && (
                     <>
-                        <div className="text-6xl mb-4">✅</div>
-                        <h1 className="text-2xl font-bold text-white mb-2">Email подтверждён!</h1>
-                        <p className="text-gray-400 mb-6">{message}</p>
+                        <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Email Verified!</h1>
+                        <p className="text-slate-500 dark:text-slate-400 mb-6">{message}</p>
                         <button
                             onClick={() => router.push('/login')}
-                            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl text-white font-semibold hover:opacity-90 transition-opacity"
+                            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
                         >
-                            Войти в аккаунт
+                            Log in to your account
                         </button>
                     </>
                 )}
 
                 {status === 'error' && (
                     <>
-                        <div className="text-6xl mb-4">❌</div>
-                        <h1 className="text-2xl font-bold text-white mb-2">Ошибка</h1>
-                        <p className="text-red-400 mb-6">{message}</p>
+                        <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Error</h1>
+                        <p className="text-red-500 dark:text-red-400 mb-6">{message}</p>
                         <button
                             onClick={() => router.push('/login')}
-                            className="px-6 py-3 bg-gray-700 rounded-xl text-white font-semibold hover:bg-gray-600 transition-colors"
+                            className="px-6 py-3 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-semibold rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
                         >
-                            Вернуться на главную
+                            Back to Login
                         </button>
                     </>
                 )}

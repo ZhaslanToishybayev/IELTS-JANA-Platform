@@ -1,20 +1,12 @@
 import { useCallback } from 'react';
 
-// Short, efficient base64 sound effects (created via bfxr/jsfxr or standard UI packs)
-const SOUNDS = {
-    click: 'data:audio/wav;base64,UklGRi4AAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=', // Placeholder (too long to inline real wavs here effectively without bloat, using meaningful short blips in implementation)
-    // For the purpose of this demo, I will use very short, synthesized-like placeholders or reliable public URLs if base64 is too large. 
-    // Actually, for a reliable experience without 10KB strings, let's use a very simple approach:
-    // Short pure tone generation using Web Audio API is better and lighter!
-};
-
 export const useSoundEffects = () => {
     const playTone = useCallback((freq: number, type: OscillatorType, duration: number) => {
         try {
-            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-            if (!AudioContext) return;
+            const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+            if (!AudioCtx) return;
 
-            const ctx = new AudioContext();
+            const ctx = new AudioCtx();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
 

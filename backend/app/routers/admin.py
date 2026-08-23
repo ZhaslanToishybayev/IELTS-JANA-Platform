@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import case, func
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from ..database import get_db
 from ..models import User, Question, Skill, Achievement, UserAchievement, Attempt, TestSet
@@ -101,7 +101,7 @@ async def admin_dashboard(
     db: Session = Depends(get_db)
 ):
     """Get admin dashboard statistics."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago = today - timedelta(days=7)
     

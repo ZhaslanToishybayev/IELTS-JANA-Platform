@@ -19,7 +19,7 @@ interface AuthContextType {
     loading: boolean;
     login: (email: string, password: string) => Promise<void>;
     signup: (email: string, username: string, password: string) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
     updateUser: (updates: Partial<User>) => void;
 }
 
@@ -31,21 +31,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Check for stored token on mount
-        const storedToken = localStorage.getItem('jana_token');
-        if (storedToken) {
-            setToken(storedToken);
-            // Fetch user data
-            api.getMe(storedToken)
-                .then(setUser)
-                .catch(() => {
+        let cancelled = false;
+
+        const restoreSession = async () => {
+            // 1) Try cookie-based auth (no token needed — cookie is sent via credentials: 'include')
+            try {
+                const userData = await api.getMe('');
+                if (cancelled) return;
+                setUser(userData);
+                // Cookie auth succeeded — recover the JWT from localStorage so React Query hooks work
+                const storedToken = localStorage.getItem('jana_token');
+                if (storedToken) setToken(storedToken);
+                return;
+            } catch {
+                // Cookie auth failed, fall through to localStorage
+            }
+
+            // 2) Try localStorage token
+            const storedToken = localStorage.getItem('jana_token');
+            if (storedToken) {
+                try {
+                    const userData = await api.getMe(storedToken);
+                    if (cancelled) return;
+                    setUser(userData);
+                    setToken(storedToken);
+                } catch {
                     localStorage.removeItem('jana_token');
-                    setToken(null);
-                })
-                .finally(() => setLoading(false));
-        } else {
-            setLoading(false);
-        }
+                }
+            }
+        };
+
+        restoreSession().finally(() => {
+            if (!cancelled) setLoading(false);
+        });
+
+        return () => { cancelled = true; };
     }, []);
 
     const login = async (email: string, password: string) => {
@@ -64,7 +84,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await login(email, password);
     };
 
-    const logout = () => {
+    const logout = async () => {
+        try {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/auth/logout`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+        } catch {
+            // Ignore logout errors
+        }
         localStorage.removeItem('jana_token');
         setToken(null);
         setUser(null);

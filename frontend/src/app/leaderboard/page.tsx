@@ -12,11 +12,9 @@ import {
     Zap,
     TrendingUp,
     BarChart3,
-    ArrowLeft,
     ChevronRight,
     Sparkles
 } from 'lucide-react';
-import Link from 'next/link';
 
 interface LeaderboardEntry {
     rank: number;
@@ -26,7 +24,7 @@ interface LeaderboardEntry {
 }
 
 export default function LeaderboardPage() {
-    const { user, token } = useAuth();
+    const { user, token, loading } = useAuth();
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -34,24 +32,24 @@ export default function LeaderboardPage() {
         const fetchLeaderboard = async () => {
             if (!user) return;
             try {
-                const data = await api.getLeaderboard(token || 'token');
+                const data = await api.getLeaderboard(token || '');
                 setLeaderboard(data);
-            } catch (err) {
-                console.error(err);
-                // Fallback for demo
-                setLeaderboard([
-                    { rank: 1, username: "Sultan", xp: 12500, level: 12 },
-                    { rank: 2, username: "Diana", xp: 10200, level: 10 },
-                    { rank: 3, username: "Ali", xp: 9800, level: 9 },
-                    { rank: 4, username: "User123", xp: 7500, level: 7 },
-                    { rank: 5, username: "You", xp: 2100, level: 3 },
-                ]);
+            } catch {
+                setLeaderboard([]);
             } finally {
                 setLoading(false);
             }
         };
         fetchLeaderboard();
     }, [user, token]);
+
+    if (loading) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     if (!user) return null;
 

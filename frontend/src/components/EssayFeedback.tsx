@@ -34,8 +34,7 @@ export function EssayFeedback({ essayText, errors }: EssayFeedbackProps) {
     // 3. Slice text into chunks (normal, error, normal, error...).
 
     const getSegments = () => {
-        let segments: { text: string; error?: WritingError }[] = [];
-        let currentIndex = 0;
+        const segments: { text: string; error?: WritingError }[] = [];
 
         // Find positions of all errors
         const errorPositions = errors
@@ -85,10 +84,10 @@ export function EssayFeedback({ essayText, errors }: EssayFeedbackProps) {
     const segments = getSegments();
 
     return (
-        <div className="bg-white/5 p-6 rounded-2xl border border-white/10 relative">
-            <h3 className="text-xl font-bold text-white mb-4">📝 Detailed Correction</h3>
+        <div className="bg-slate-50 dark:bg-white/5 p-6 rounded-2xl border border-slate-200 dark:border-white/10 relative">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Detailed Correction</h3>
 
-            <div className="prose prose-invert max-w-none text-lg leading-relaxed whitespace-pre-wrap font-serif">
+            <div className="max-w-none text-lg leading-relaxed whitespace-pre-wrap font-serif">
                 {segments.map((segment, idx) => (
                     <React.Fragment key={idx}>
                         {segment.error ? (
@@ -106,7 +105,7 @@ export function EssayFeedback({ essayText, errors }: EssayFeedbackProps) {
                                 {/* <span className="absolute -top-2 -right-2 w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> */}
                             </span>
                         ) : (
-                            <span className="text-white/80">{segment.text}</span>
+                            <span className="text-slate-700 dark:text-white/80">{segment.text}</span>
                         )}
                     </React.Fragment>
                 ))}
@@ -142,7 +141,7 @@ export function EssayFeedback({ essayText, errors }: EssayFeedbackProps) {
                 )}
             </AnimatePresence>
 
-            <div className="mt-6 flex gap-4 text-sm text-white/50 border-t border-white/10 pt-4">
+            <div className="mt-6 flex gap-4 text-sm text-slate-500 dark:text-white/50 border-t border-slate-200 dark:border-white/10 pt-4">
                 <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-red-400 rounded-full"></div>
                     <span>Grammar</span>

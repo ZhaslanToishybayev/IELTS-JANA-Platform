@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    AreaChart, Area, BarChart, Bar, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
+    AreaChart, Area, BarChart, Bar, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -24,6 +24,15 @@ interface SkillData {
     category: string;
 }
 
+const LIGHT_TOOLTIP = {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    color: '#1e293b',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+};
+
+
 export function ProgressCharts() {
     const { token } = useAuth();
     const [progressHistory, setProgressHistory] = useState<ProgressData[]>([]);
@@ -42,7 +51,6 @@ export function ProgressCharts() {
                     api.getProgressHistory(token, days),
                 ]);
 
-                // Transform skills for radar chart
                 const skills = dashboard.skills.map((s: { skill_name: string; mastery_probability: number; attempts_count: number; category: string }) => ({
                     skill: s.skill_name,
                     mastery: Math.round(s.mastery_probability * 100),
@@ -79,18 +87,11 @@ export function ProgressCharts() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                    className="w-12 h-12 border-4 border-purple-400 border-t-transparent rounded-full"
-                />
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
             </div>
         );
     }
 
-    const filteredHistory = progressHistory;
-
-    // Prepare radar chart data (top skills)
     const radarData = skillData.slice(0, 6).map(s => ({
         subject: s.skill.length > 12 ? s.skill.slice(0, 12) + '...' : s.skill,
         value: s.mastery,
@@ -105,10 +106,11 @@ export function ProgressCharts() {
                     <button
                         key={range}
                         onClick={() => setTimeRange(range)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition ${timeRange === range
-                            ? 'bg-purple-500 text-white'
-                            : 'bg-white/10 text-white/70 hover:bg-white/20'
-                            }`}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition ${
+                            timeRange === range
+                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
                     >
                         {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : 'All Time'}
                     </button>
@@ -119,36 +121,29 @@ export function ProgressCharts() {
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
+                className="card p-6"
             >
-                <h3 className="text-lg font-semibold text-white mb-4">Band Score Trend</h3>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Band Score Trend</h3>
                 <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={filteredHistory}>
+                        <AreaChart data={progressHistory}>
                             <defs>
                                 <linearGradient id="bandGradient" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#818cf8" stopOpacity={0.8} />
-                                    <stop offset="95%" stopColor="#818cf8" stopOpacity={0} />
+                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                            <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={12} />
-                            <YAxis domain={[4, 9]} stroke="rgba(255,255,255,0.5)" fontSize={12} />
-                            <Tooltip
-                                contentStyle={{
-                                    backgroundColor: 'rgba(0,0,0,0.8)',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    color: 'white',
-                                }}
-                            />
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:stroke-white/10" />
+                            <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
+                            <YAxis domain={[4, 9]} stroke="#94a3b8" fontSize={12} />
+                            <Tooltip contentStyle={LIGHT_TOOLTIP} />
                             <Area
                                 type="monotone"
                                 dataKey="band"
-                                stroke="#818cf8"
+                                stroke="#3b82f6"
                                 fillOpacity={1}
                                 fill="url(#bandGradient)"
-                                strokeWidth={2}
+                                strokeWidth={2.5}
                             />
                         </AreaChart>
                     </ResponsiveContainer>
@@ -161,29 +156,24 @@ export function ProgressCharts() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
+                    className="card p-6"
                 >
-                    <h3 className="text-lg font-semibold text-white mb-4">Accuracy Over Time</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Accuracy Over Time</h3>
                     <div className="h-48">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={filteredHistory}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={10} />
-                                <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.5)" fontSize={10} />
+                            <LineChart data={progressHistory}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
+                                <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={10} />
                                 <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: 'rgba(0,0,0,0.8)',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        color: 'white',
-                                    }}
+                                    contentStyle={LIGHT_TOOLTIP}
                                     formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Accuracy']}
                                 />
                                 <Line
                                     type="monotone"
                                     dataKey="accuracy"
                                     stroke="#10b981"
-                                    strokeWidth={2}
+                                    strokeWidth={2.5}
                                     dot={{ fill: '#10b981', r: 3 }}
                                 />
                             </LineChart>
@@ -195,23 +185,16 @@ export function ProgressCharts() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
-                    className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
+                    className="card p-6"
                 >
-                    <h3 className="text-lg font-semibold text-white mb-4">Daily Activity</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Daily Activity</h3>
                     <div className="h-48">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={filteredHistory}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={10} />
-                                <YAxis stroke="rgba(255,255,255,0.5)" fontSize={10} />
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: 'rgba(0,0,0,0.8)',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        color: 'white',
-                                    }}
-                                />
+                            <BarChart data={progressHistory}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
+                                <YAxis stroke="#94a3b8" fontSize={10} />
+                                <Tooltip contentStyle={LIGHT_TOOLTIP} />
                                 <Bar dataKey="attempts" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Questions" />
                             </BarChart>
                         </ResponsiveContainer>
@@ -225,21 +208,21 @@ export function ProgressCharts() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
-                    className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
+                    className="card p-6"
                 >
-                    <h3 className="text-lg font-semibold text-white mb-4">Skill Mastery Radar</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Skill Mastery Radar</h3>
                     <div className="h-72">
                         <ResponsiveContainer width="100%" height="100%">
                             <RadarChart data={radarData}>
-                                <PolarGrid stroke="rgba(255,255,255,0.2)" />
-                                <PolarAngleAxis dataKey="subject" stroke="rgba(255,255,255,0.7)" fontSize={11} />
-                                <PolarRadiusAxis angle={30} domain={[0, 100]} stroke="rgba(255,255,255,0.3)" />
+                                <PolarGrid stroke="#e2e8f0" />
+                                <PolarAngleAxis dataKey="subject" stroke="#64748b" fontSize={11} />
+                                <PolarRadiusAxis angle={30} domain={[0, 100]} stroke="#cbd5e1" />
                                 <Radar
                                     name="Mastery"
                                     dataKey="value"
-                                    stroke="#a855f7"
-                                    fill="#a855f7"
-                                    fillOpacity={0.5}
+                                    stroke="#8b5cf6"
+                                    fill="#8b5cf6"
+                                    fillOpacity={0.3}
                                 />
                             </RadarChart>
                         </ResponsiveContainer>
@@ -252,36 +235,29 @@ export function ProgressCharts() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
-                className="bg-white/10 backdrop-blur-sm rounded-2xl p-6"
+                className="card p-6"
             >
-                <h3 className="text-lg font-semibold text-white mb-4">XP Earned Per Day</h3>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">XP Earned Per Day</h3>
                 <div className="h-48">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={filteredHistory}>
+                        <AreaChart data={progressHistory}>
                             <defs>
                                 <linearGradient id="xpGradient" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8} />
+                                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
                                     <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                            <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={10} />
-                            <YAxis stroke="rgba(255,255,255,0.5)" fontSize={10} />
-                            <Tooltip
-                                contentStyle={{
-                                    backgroundColor: 'rgba(0,0,0,0.8)',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    color: 'white',
-                                }}
-                            />
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
+                            <YAxis stroke="#94a3b8" fontSize={10} />
+                            <Tooltip contentStyle={LIGHT_TOOLTIP} />
                             <Area
                                 type="monotone"
                                 dataKey="xp"
                                 stroke="#f59e0b"
                                 fillOpacity={1}
                                 fill="url(#xpGradient)"
-                                strokeWidth={2}
+                                strokeWidth={2.5}
                             />
                         </AreaChart>
                     </ResponsiveContainer>

@@ -120,6 +120,61 @@ export interface DiagnosticStart {
     completed: boolean;
 }
 
+export interface GeneratedReadingTest {
+    title: string;
+    summary: string;
+    questions: {
+        question_text: string;
+        question_type: string;
+        options: string[] | null;
+        correct_answer: string;
+        explanation: string;
+    }[];
+}
+
+export interface SpeakingAnalysisResponse {
+    band_score: number;
+    fluency_coherence: { score: number; comment: string };
+    pronunciation: { score: number; comment: string };
+    lexical_resource: { score: number; comment: string };
+    grammatical_range: { score: number; comment: string };
+    overall_feedback: string;
+    transcription?: string;
+    annotated_errors?: {
+        original_text: string;
+        correction: string;
+        type: string;
+        explanation: string;
+    }[];
+    improvements: string[];
+}
+
+export interface WritingEvaluationResponse {
+    band_score: number;
+    task_response: { score: number; comment: string };
+    coherence_cohesion: { score: number; comment: string };
+    lexical_resource: { score: number; comment: string };
+    grammatical_range: { score: number; comment: string };
+    overall_feedback: string;
+    improvements: string[];
+    annotated_errors?: {
+        original_text: string;
+        correction: string;
+        type: string;
+        explanation: string;
+    }[];
+    error?: string;
+}
+
+export interface NewAchievement {
+    code: string;
+    name: string;
+    description: string;
+    icon: string;
+    xp_reward: number;
+    rarity: string;
+}
+
 export interface DiagnosticSubmitResult {
     id: number;
     question_id: number;
@@ -167,6 +222,7 @@ class ApiClient {
         const response = await fetch(`${this.baseUrl}${endpoint}`, {
             ...fetchOptions,
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -308,10 +364,6 @@ class ApiClient {
             method: 'POST',
             token,
         });
-    }
-
-    async getStudyPlan(token: string, minutes = 60) {
-        return this.fetch<{ minutes: number; total_attempts: number; items: unknown[] }>(`/study-plan/today?minutes=${minutes}`, { token });
     }
 
     async getTodayPlan(token: string) {
@@ -502,22 +554,7 @@ class ApiClient {
 
     // Writing
     async evaluateWriting(token: string, essayText: string, taskType: string, promptText: string) {
-        return this.fetch<{
-            band_score: number;
-            task_response: { score: number; comment: string };
-            coherence_cohesion: { score: number; comment: string };
-            lexical_resource: { score: number; comment: string };
-            grammatical_range: { score: number; comment: string };
-            overall_feedback: string;
-            improvements: string[];
-            annotated_errors?: {
-                original_text: string;
-                correction: string;
-                type: string;
-                explanation: string;
-            }[];
-            error?: string;
-        }>('/writing/evaluate', {
+        return this.fetch<WritingEvaluationResponse>('/writing/evaluate', {
             method: 'POST',
             token,
             body: JSON.stringify({
@@ -552,6 +589,7 @@ class ApiClient {
             headers: {
                 'Authorization': `Bearer ${token}`,
             },
+            credentials: 'include',
             body: formData,
         });
 
@@ -560,7 +598,7 @@ class ApiClient {
             throw new Error(error.detail || `HTTP ${response.status}`);
         }
 
-        return response.json();
+        return response.json() as Promise<SpeakingAnalysisResponse>;
     }
 
     async getSpeakingHistory(token: string) {
@@ -576,7 +614,7 @@ class ApiClient {
 
     // Vocabulary
     async getDueFlashcards(token: string) {
-        return this.fetch<unknown[]>('/vocabulary/due', { token });
+        return this.fetch<{ id: number; word: string; definition: string; context: string; next_review: string }[]>('/vocabulary/due', { token });
     }
 
     async addVocabulary(token: string, word: string, definition: string, context?: string) {
@@ -697,7 +735,18 @@ class ApiClient {
                 is_unlocked: boolean;
                 unlocked_at: string | null;
             }[];
-            by_category: Record<string, any[]>;
+            by_category: Record<string, {
+                id: number;
+                code: string;
+                name: string;
+                description: string;
+                icon: string;
+                category: string;
+                xp_reward: number;
+                rarity: string;
+                is_unlocked: boolean;
+                unlocked_at: string | null;
+            }[]>;
         }>('/achievements', { token });
     }
 

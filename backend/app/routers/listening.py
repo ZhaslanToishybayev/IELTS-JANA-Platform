@@ -247,19 +247,23 @@ async def get_listening_progress(
     db: Session = Depends(get_db)
 ):
     """Get user's listening practice progress."""
-    # Get all listening attempts
-    listening_attempts = db.query(Attempt).join(Question).filter(
+    from sqlalchemy import func, Integer, cast
+
+    stats = db.query(
+        func.count(Attempt.id).label("total"),
+        func.sum(cast(Attempt.is_correct, Integer)).label("correct"),
+        func.count(func.distinct(Attempt.question_id)).label("unique_questions"),
+    ).join(Question).filter(
         Attempt.user_id == current_user.id,
-        Question.module == "LISTENING"
-    ).all()
-    
-    total = len(listening_attempts)
-    correct = sum(1 for a in listening_attempts if a.is_correct)
-    
-    # Get listened questions count
-    unique_questions = len(set(a.question_id for a in listening_attempts))
+        Question.module == "LISTENING",
+    ).one()
+
+    total = stats.total or 0
+    correct = stats.correct or 0
+    unique_questions = stats.unique_questions or 0
+
     total_listening_questions = db.query(Question).filter(Question.module == "LISTENING").count()
-    
+
     return {
         "total_attempts": total,
         "correct_attempts": correct,

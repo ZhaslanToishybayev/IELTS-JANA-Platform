@@ -6,7 +6,7 @@ from datetime import datetime
 
 from ..database import get_db
 from ..services.vocabulary_service import vocabulary_service
-from ..services.auth import get_current_user
+from ..routers.auth import get_current_user
 from ..models.models import User
 
 router = APIRouter(prefix="/api/vocabulary", tags=["vocabulary"])
@@ -71,7 +71,7 @@ def submit_review(
     current_user: User = Depends(get_current_user)
 ):
     """Submit a review result (0-5) to update SRS schedule."""
-    card = vocabulary_service.process_review(db, request.card_id, request.quality)
+    card = vocabulary_service.process_review(db, request.card_id, request.quality, current_user.id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     return {"status": "ok", "next_review": card.next_review_at}

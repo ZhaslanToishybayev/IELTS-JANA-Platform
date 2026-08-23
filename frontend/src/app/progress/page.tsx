@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
 import { ProgressCharts } from '@/components/ProgressCharts';
+import { BarChart3 } from 'lucide-react';
 
 export default function ProgressPage() {
     const { user, loading } = useAuth();
@@ -17,31 +18,29 @@ export default function ProgressPage() {
     }, [user, loading, router]);
 
     if (loading || !user) {
-        return null;
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white">
-            {/* Header */}
-            <header className="sticky top-0 z-50 bg-black/20 backdrop-blur-sm border-b border-white/10">
-                <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <a href="/dashboard" className="text-white/70 hover:text-white">
-                            Back
-                        </a>
-                        <h1 className="text-xl font-bold">Progress Analytics</h1>
-                    </div>
-                </div>
-            </header>
+        <div className="pb-24 max-w-6xl mx-auto px-4 md:px-0">
+            <div className="space-y-2 py-6 mb-10">
+                <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
+                    <BarChart3 className="w-10 h-10 text-blue-600" />
+                    Progress Analytics
+                </h1>
+                <p className="text-slate-500 font-medium tracking-tight">Track your IELTS preparation journey over time.</p>
+            </div>
 
-            <main className="max-w-6xl mx-auto px-4 py-8">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                >
-                    <ProgressCharts />
-                </motion.div>
-            </main>
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+            >
+                <ProgressCharts />
+            </motion.div>
         </div>
     );
 }

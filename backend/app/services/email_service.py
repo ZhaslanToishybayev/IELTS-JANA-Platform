@@ -3,7 +3,7 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Optional
 from jose import jwt
 import logging
@@ -21,7 +21,7 @@ def create_email_token(email: str, token_type: str = "verification") -> str:
     else:
         expire_hours = settings.password_reset_expire_hours
     
-    expire = datetime.utcnow() + timedelta(hours=expire_hours)
+    expire = datetime.now(UTC) + timedelta(hours=expire_hours)
     to_encode = {
         "sub": email,
         "type": token_type,

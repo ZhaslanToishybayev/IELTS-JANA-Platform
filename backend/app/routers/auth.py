@@ -1,7 +1,7 @@
 """Authentication API router with email verification and password reset."""
 
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
+from datetime import datetime, UTC
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -19,6 +19,9 @@ from ..services.email_service import (
 from ..services.auth import get_password_hash, validate_user_password
 from ..models import User
 from ..middleware.rate_limiter import AUTH_LIMIT, SIGNUP_LIMIT, limiter
+from ..config import get_settings
+
+settings = get_settings()
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -94,6 +97,7 @@ async def signup(
 @limiter.limit(AUTH_LIMIT)
 async def login(
     request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -113,12 +117,23 @@ async def login(
         )
     
     access_token = create_access_token(data={"sub": str(user.id)})
+    
+    response.set_cookie(
+        key="jana_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.environment == "production",
+        samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
+    
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/login/json", response_model=Token)
 @limiter.limit(AUTH_LIMIT)
-async def login_json(request: Request, credentials: UserLogin, db: Session = Depends(get_db)):
+async def login_json(request: Request, response: Response, credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate user with JSON body and return JWT token."""
     user = authenticate_user(db, credentials.email, credentials.password)
     if not user:
@@ -134,13 +149,61 @@ async def login_json(request: Request, credentials: UserLogin, db: Session = Dep
         )
     
     access_token = create_access_token(data={"sub": str(user.id)})
+    
+    response.set_cookie(
+        key="jana_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.environment == "production",
+        samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
+    
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear the authentication cookie."""
+    response.delete_cookie(key="jana_token", path="/")
+    return {"message": "Logged out successfully"}
+
+
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
-    """Get the current user's profile."""
-    return current_user
+async def get_me(request: Request, db: Session = Depends(get_db)):
+    """Get the current user's profile. Reads token from cookie or Authorization header."""
+    token = request.cookies.get("jana_token")
+    
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user_id = decode_token(token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user = get_user_by_id(db, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user
 
 
 # ============ Email Verification Endpoints ============
@@ -167,7 +230,7 @@ async def verify_email(request: VerifyEmailRequest, db: Session = Depends(get_db
         return {"message": "Email already verified"}
     
     user.is_email_verified = True
-    user.email_verified_at = datetime.utcnow()
+    user.email_verified_at = datetime.now(UTC)
     db.commit()
     
     return {"message": "Email verified successfully! You can now access all features."}

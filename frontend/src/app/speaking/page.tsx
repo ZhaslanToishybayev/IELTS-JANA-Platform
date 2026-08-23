@@ -1,31 +1,25 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import type { SpeakingAnalysisResponse } from '@/lib/api';
 import { SpeakingFeedback } from '@/components/SpeakingFeedback';
 import {
     ArrowLeft,
     Mic,
     MicOff,
     Clock,
-    Play,
-    RotateCcw,
     CheckCircle2,
-    AlertCircle,
     Sparkles,
     ChevronRight,
     TrendingUp,
     Volume2,
-    Award,
-    BookOpen,
     Info,
     History,
-    StopCircle,
-    Pause
+    StopCircle
 } from 'lucide-react';
-import Link from 'next/link';
 
 const SPEAKING_TOPICS = [
     {
@@ -87,17 +81,16 @@ type SpeakingTopic = typeof SPEAKING_TOPICS[number];
 type SpeakingHistoryItem = Awaited<ReturnType<typeof api.getSpeakingHistory>>['attempts'][number];
 
 export default function SpeakingPage() {
-    const { user, token } = useAuth();
+    const { user, token, loading } = useAuth();
     const [topics, setTopics] = useState<SpeakingTopic[]>(SPEAKING_TOPICS);
     const [selectedTopic, setSelectedTopic] = useState<SpeakingTopic | null>(null);
     const [recordingState, setRecordingState] = useState<RecordingState>('idle');
     const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
     const [timeLeft, setTimeLeft] = useState(0);
-    const [isRecording, setIsRecording] = useState(false);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [permissionError, setPermissionError] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [feedback, setFeedback] = useState<any>(null);
+    const [feedback, setFeedback] = useState<SpeakingAnalysisResponse | null>(null);
     const [history, setHistory] = useState<SpeakingHistoryItem[]>([]);
     const [error, setError] = useState<string | null>(null);
 
@@ -168,7 +161,7 @@ export default function SpeakingPage() {
             } else {
                 beginRecording(topic);
             }
-        } catch (err) {
+        } catch {
             setPermissionError(true);
         }
     };
@@ -177,7 +170,6 @@ export default function SpeakingPage() {
         if (!mediaRecorderRef.current) return;
         setRecordingState('recording');
         setTimeLeft(topic.speakTime || topic.timePerQuestion || 60);
-        setIsRecording(true);
         mediaRecorderRef.current.start();
         startTimer(topic.speakTime || topic.timePerQuestion || 60, () => nextQuestion(topic));
     };
@@ -212,7 +204,6 @@ export default function SpeakingPage() {
             mediaRecorderRef.current.stop();
         }
         setRecordingState('finished');
-        setIsRecording(false);
     };
 
     const resetPractice = () => {
@@ -220,7 +211,6 @@ export default function SpeakingPage() {
         setRecordingState('idle');
         setCurrentQuestionIdx(0);
         setTimeLeft(0);
-        setIsRecording(false);
         setAudioUrl(null);
         setFeedback(null);
         setError(null);
@@ -232,6 +222,14 @@ export default function SpeakingPage() {
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
+
+    if (loading) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     if (!user) return null;
 

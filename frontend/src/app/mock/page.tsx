@@ -139,7 +139,15 @@ export default function MockExamPage() {
     const currentQuestions = status === 'LISTENING' ? listeningQuestions : readingQuestions;
     const answeredCount = useMemo(() => currentQuestions.filter((question) => answers[`q_${question.id}`]?.trim()).length, [answers, currentQuestions]);
 
-    if (loading || !user) return null;
+    if (loading) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    if (!user) return null;
 
     return (
         <div className="py-6 space-y-6">

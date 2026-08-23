@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -7,7 +7,7 @@ from ..models.models import UserVocabulary, Vocabulary
 class VocabularyService:
     def get_due_cards(self, db: Session, user_id: int):
         """Get flashcards due for review today or overdue."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         return db.query(UserVocabulary).join(Vocabulary)\
             .filter(UserVocabulary.user_id == user_id)\
             .filter(UserVocabulary.next_review_at <= now)\
@@ -34,7 +34,7 @@ class VocabularyService:
             user_vocab = UserVocabulary(
                 user_id=user_id,
                 vocab_id=vocab.id,
-                next_review_at=datetime.utcnow(), # Due immediately
+                next_review_at=datetime.now(UTC), # Due immediately
                 interval=0,
                 ease_factor=2.5,
                 repetitions=0
@@ -45,14 +45,17 @@ class VocabularyService:
             
         return user_vocab
 
-    def process_review(self, db: Session, card_id: int, quality: int):
+    def process_review(self, db: Session, card_id: int, quality: int, user_id: int):
         """
         Update SRS state based on usage quality (0-5).
         Algorithm (SM-2):
         - 0-2: Fail (Reset repetitions, interval = 1)
         - 3-5: Pass (Update ease factor and interval)
         """
-        card = db.query(UserVocabulary).filter(UserVocabulary.id == card_id).first()
+        card = db.query(UserVocabulary).filter(
+            UserVocabulary.id == card_id,
+            UserVocabulary.user_id == user_id
+        ).first()
         if not card:
             return None
             
@@ -76,7 +79,7 @@ class VocabularyService:
             card.ease_factor = max(1.3, card.ease_factor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)))
             
         # Set next review date
-        card.next_review_at = datetime.utcnow() + timedelta(days=card.interval)
+        card.next_review_at = datetime.now(UTC) + timedelta(days=card.interval)
         
         # Mark mastery if interval is very long > 21 days
         if card.interval > 21:

@@ -1,3 +1,4 @@
+'use client';
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,7 +23,6 @@ export const SpeakingFeedback: React.FC<SpeakingFeedbackProps> = ({ transcriptio
     // but for MVP exact match first occurrence is "good enough" usually
     const getSegments = () => {
         let segments: { text: string; error?: SpeakingError }[] = [];
-        let currentIndex = 0;
 
         // Sort errors by position if we had positions. 
         // We will just find them in text for now.
@@ -66,8 +66,8 @@ export const SpeakingFeedback: React.FC<SpeakingFeedbackProps> = ({ transcriptio
     const segments = getSegments();
 
     return (
-        <div className="bg-white/5 p-6 rounded-2xl border border-white/10 relative">
-            <h3 className="text-xl font-bold text-white mb-4">🎤 Transcription & Analysis</h3>
+        <div className="bg-slate-50 dark:bg-white/5 p-6 rounded-2xl border border-slate-200 dark:border-white/10 relative">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Transcription &amp; Analysis</h3>
 
             <div className="prose prose-invert max-w-none text-lg leading-relaxed whitespace-pre-wrap font-serif">
                 {segments.map((segment, idx) => (
@@ -85,7 +85,7 @@ export const SpeakingFeedback: React.FC<SpeakingFeedbackProps> = ({ transcriptio
                                 {segment.text}
                             </span>
                         ) : (
-                            <span className="text-white/80">{segment.text}</span>
+                            <span className="text-slate-700 dark:text-white/80">{segment.text}</span>
                         )}
                     </React.Fragment>
                 ))}

@@ -1,9 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { api, type DiagnosticResult, type DiagnosticStatus, type TodayPlan } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useDashboard, useTodayPlan, useDiagnosticStatus, useDiagnosticResult } from '@/lib/hooks';
 import {
     ProgressRing,
     MasteryBar,
@@ -25,98 +23,25 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-interface DashboardData {
-    username: string;
-    level: number;
-    xp: number;
-    xp_to_next_level: number;
-    current_streak: number;
-    estimated_band: number;
-    total_attempts: number;
-    overall_accuracy: number;
-    avg_response_time_ms: number;
-    skills: {
-        skill_id: number;
-        skill_name: string;
-        category: string;
-        mastery_probability: number;
-        attempts_count: number;
-        accuracy_rate: number;
-        is_unlocked: boolean;
-    }[];
-    section_bands: Record<string, number>;
-    weak_question_types: { module: string; question_type: string; mistakes: number }[];
-    mistake_log: { id: number; module: string; question_type: string; question_text: string; correct_answer: string }[];
-    next_recommended_session: { module: string; mode: string; question_type?: string; duration_minutes: number; reason: string } | null;
-}
+const categoryLabels: Record<string, string> = {
+    'TF_NG': 'True/False/Not Given',
+    'HEADINGS': 'Matching Headings',
+    'SUMMARY': 'Summary Completion',
+    'MATCHING_INFO': 'Matching Information',
+    'SENTENCE_COMP': 'Sentence Completion',
+    'LISTENING_MCQ': 'Listening - Multiple Choice',
+    'LISTENING_FORM': 'Listening - Form Completion',
+    'LISTENING_MAP': 'Listening - Map Labeling',
+    'LISTENING_NOTES': 'Listening - Note Taking',
+};
 
 export function Dashboard() {
-    const { token } = useAuth();
-    const [data, setData] = useState<DashboardData | null>(null);
-    const [todayPlan, setTodayPlan] = useState<TodayPlan | null>(null);
-    const [diagnosticStatus, setDiagnosticStatus] = useState<DiagnosticStatus | null>(null);
-    const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
-    const [planError, setPlanError] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { data, isLoading, error } = useDashboard();
+    const { data: todayPlan } = useTodayPlan();
+    const { data: diagnosticStatus } = useDiagnosticStatus();
+    const { data: diagnosticResult } = useDiagnosticResult(diagnosticStatus?.completed === true);
 
-    useEffect(() => {
-        if (!token) return;
-
-        const authToken = token;
-        let cancelled = false;
-
-        async function loadDashboard() {
-            setLoading(true);
-            setError(null);
-            setPlanError(null);
-
-            const [dashboardResult, planResult, diagnosticStatusResult] = await Promise.allSettled([
-                api.getDashboard(authToken),
-                api.getTodayPlan(authToken),
-                api.getDiagnosticStatus(authToken),
-            ]);
-
-            if (cancelled) return;
-
-            if (dashboardResult.status === 'fulfilled') {
-                setData(dashboardResult.value);
-            } else {
-                console.error(dashboardResult.reason);
-                setError('Unable to load your dashboard right now.');
-            }
-
-            if (planResult.status === 'fulfilled') {
-                setTodayPlan(planResult.value);
-            } else {
-                console.error(planResult.reason);
-                setPlanError("Today's plan is temporarily unavailable.");
-            }
-
-            if (diagnosticStatusResult.status === 'fulfilled') {
-                setDiagnosticStatus(diagnosticStatusResult.value);
-                if (diagnosticStatusResult.value.completed) {
-                    try {
-                        setDiagnosticResult(await api.getDiagnosticResult(authToken));
-                    } catch (diagnosticError) {
-                        console.error(diagnosticError);
-                    }
-                }
-            } else {
-                console.error(diagnosticStatusResult.reason);
-            }
-
-            setLoading(false);
-        }
-
-        loadDashboard();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [token]);
-
-    if (loading) {
+    if (isLoading) {
         return (
             <div className="min-h-[60vh] flex items-center justify-center">
                 <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -129,7 +54,7 @@ export function Dashboard() {
             <div className="min-h-[60vh] flex items-center justify-center px-4">
                 <div className="card p-6 text-center max-w-md">
                     <h2 className="text-lg font-black text-slate-900 dark:text-white">Dashboard unavailable</h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{error || 'Please try again in a moment.'}</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{error?.message || 'Please try again in a moment.'}</p>
                 </div>
             </div>
         );
@@ -142,18 +67,6 @@ export function Dashboard() {
         acc[skill.category].push(skill);
         return acc;
     }, {} as Record<string, typeof data.skills>);
-
-    const categoryLabels: Record<string, string> = {
-        'TF_NG': 'True/False/Not Given',
-        'HEADINGS': 'Matching Headings',
-        'SUMMARY': 'Summary Completion',
-        'MATCHING_INFO': 'Matching Information',
-        'SENTENCE_COMP': 'Sentence Completion',
-        'LISTENING_MCQ': 'Listening - Multiple Choice',
-        'LISTENING_FORM': 'Listening - Form Completion',
-        'LISTENING_MAP': 'Listening - Map Labeling',
-        'LISTENING_NOTES': 'Listening - Note Taking',
-    };
 
     const todayPlanCtaHref = todayPlan?.tasks.find((task) => task.href)?.href || '/practice';
     const diagnosticWeakest = diagnosticResult?.weak_skills[0];
@@ -326,30 +239,24 @@ export function Dashboard() {
                             </div>
                         </div>
 
-                        {planError ? (
-                            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{planError}</p>
-                        ) : (
-                            <>
-                                {!hasCompletedDiagnostic && (
-                                    <p className="text-sm font-black text-blue-700 dark:text-blue-300">
-                                        Complete your diagnostic first so JANA can build a better plan.
-                                    </p>
-                                )}
-                                <p className="text-sm font-medium text-slate-600 dark:text-slate-300 max-w-2xl">
-                                    {todayPlan?.reason}
-                                </p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                    {todayPlan?.tasks.slice(0, 3).map((task) => (
-                                        <div key={`${task.type}-${task.label}`} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                                            <div className="text-sm font-black text-slate-900 dark:text-white">{task.label}</div>
-                                            <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mt-2">
-                                                Target: {task.target}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </>
+                        {!hasCompletedDiagnostic && (
+                            <p className="text-sm font-black text-blue-700 dark:text-blue-300">
+                                Complete your diagnostic first so JANA can build a better plan.
+                            </p>
                         )}
+                        <p className="text-sm font-medium text-slate-600 dark:text-slate-300 max-w-2xl">
+                            {todayPlan?.reason}
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {todayPlan?.tasks.slice(0, 3).map((task) => (
+                                <div key={`${task.type}-${task.label}`} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                                    <div className="text-sm font-black text-slate-900 dark:text-white">{task.label}</div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mt-2">
+                                        Target: {task.target}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="lg:w-56 flex flex-col gap-3">
@@ -461,7 +368,6 @@ export function Dashboard() {
                                                 key={skill.skill_id}
                                                 skillName={skill.skill_name}
                                                 mastery={skill.mastery_probability}
-                                                category={skill.category}
                                                 isUnlocked={skill.is_unlocked}
                                             />
                                         ))}

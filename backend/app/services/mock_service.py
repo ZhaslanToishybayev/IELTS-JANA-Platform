@@ -1,6 +1,6 @@
 
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.models import MockTestSession, Question, Attempt, MistakeReview, TestSet
@@ -209,7 +209,7 @@ class MockExamService:
         session.scores = current_scores
         flag_modified(session, "scores")
         session.status = "COMPLETED"
-        session.end_time = datetime.utcnow()
+        session.end_time = datetime.now(UTC)
         
         db.commit()
         db.refresh(session)

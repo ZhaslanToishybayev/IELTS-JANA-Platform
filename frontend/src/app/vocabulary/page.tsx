@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { useDueFlashcards } from '@/lib/hooks';
 import VocabularyPractice from '@/components/VocabularyPractice';
 import {
     Brain,
     Plus,
     BookOpen,
     Sparkles,
-    ArrowLeft,
     X,
     MessageSquare,
     Info,
@@ -18,47 +18,39 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function VocabularyPage() {
-    const { user, token } = useAuth();
-    const [cards, setCards] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { user, token, loading: authLoading } = useAuth();
+    const { data: cards = [], isLoading: loading, refetch } = useDueFlashcards();
     const [showAddModal, setShowAddModal] = useState(false);
+    const [addError, setAddError] = useState<string | null>(null);
 
     // Form state
     const [newWord, setNewWord] = useState("");
     const [newDef, setNewDef] = useState("");
     const [newContext, setNewContext] = useState("");
 
-    const loadCards = async () => {
-        if (!token) return;
-        try {
-            const data = await api.getDueFlashcards(token);
-            setCards(data);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const handleAddWord = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!token) return;
+        setAddError(null);
 
         try {
-            await api.addVocabulary(token, newWord, newDef, newContext);
+            await api.addVocabulary(token || '', newWord, newDef, newContext);
             setShowAddModal(false);
             setNewWord("");
             setNewDef("");
             setNewContext("");
-            loadCards();
-        } catch (err) {
-            alert("Failed to add word.");
+            refetch();
+        } catch {
+            setAddError("Failed to add word. Please try again.");
         }
     };
 
-    useEffect(() => {
-        loadCards();
-    }, [token]);
+    if (authLoading) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     if (!user) return null;
 
@@ -145,6 +137,12 @@ export default function VocabularyPage() {
                                 </button>
                             </div>
 
+                            {addError && (
+                                <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm">
+                                    {addError}
+                                </div>
+                            )}
+
                             <form onSubmit={handleAddWord} className="space-y-6">
                                 <div className="space-y-2">
                                     <label className="text-[10px] uppercase font-black tracking-widest text-slate-400 flex items-center gap-2">
@@ -210,4 +208,3 @@ export default function VocabularyPage() {
         </div>
     );
 }
-

@@ -317,10 +317,10 @@ class UserSkillMastery(Base):
     # Relationships
     user = relationship("User", back_populates="skill_masteries")
     skill = relationship("Skill", back_populates="user_masteries")
-    
-    class Config:
-        # Unique constraint on user_id + skill_id
-        pass
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'skill_id', name='uq_user_skill'),
+    )
 
 
 class DashboardMetric(Base):

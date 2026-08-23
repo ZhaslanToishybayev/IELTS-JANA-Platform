@@ -3,7 +3,7 @@
 from datetime import datetime, date, timedelta
 from typing import List, Dict
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, Integer, cast
 
 from ..models import User, Attempt, UserSkillMastery, Skill, DashboardMetric, Question, MistakeReview
 from ..ml import knowledge_tracer
@@ -18,79 +18,85 @@ def get_dashboard_data(db: Session, user_id: int) -> Dict:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return {}
-    
-    # Get all attempts
-    attempts = db.query(Attempt).filter(Attempt.user_id == user_id).all()
-    total_attempts = len(attempts)
-    correct_attempts = sum(1 for a in attempts if a.is_correct)
-    
-    # Calculate overall accuracy
+
+    # Aggregate attempts in SQL instead of loading all into Python
+    attempt_stats = db.query(
+        func.count(Attempt.id).label("total"),
+        func.sum(cast(Attempt.is_correct, Integer)).label("correct"),
+        func.avg(Attempt.response_time_ms).label("avg_time"),
+    ).filter(Attempt.user_id == user_id).one()
+
+    total_attempts = attempt_stats.total or 0
+    correct_attempts = attempt_stats.correct or 0
     overall_accuracy = correct_attempts / total_attempts if total_attempts > 0 else 0
-    
-    # Calculate average response time
-    if attempts:
-        avg_response_time = sum(a.response_time_ms for a in attempts) / len(attempts)
-    else:
-        avg_response_time = 0
-    
-    # Get skill masteries and calculate estimated band
-    masteries = db.query(UserSkillMastery).filter(
-        UserSkillMastery.user_id == user_id
-    ).all()
-    
-    skill_masteries_by_category = {}
-    for m in masteries:
-        skill = db.query(Skill).filter(Skill.id == m.skill_id).first()
-        if skill:
-            if skill.category not in skill_masteries_by_category:
-                skill_masteries_by_category[skill.category] = []
-            skill_masteries_by_category[skill.category].append(m.mastery_probability)
-    
-    # Average mastery per category
+    avg_response_time = float(attempt_stats.avg_time or 0)
+
+    # Get skill masteries joined with Skill in one query (fixes N+1)
+    mastery_rows = db.query(
+        Skill.id,
+        Skill.name,
+        Skill.category,
+        Skill.parent_skill_id,
+        UserSkillMastery.mastery_probability,
+        UserSkillMastery.attempts_count,
+        UserSkillMastery.is_unlocked,
+    ).outerjoin(UserSkillMastery, and_(
+        UserSkillMastery.skill_id == Skill.id,
+        UserSkillMastery.user_id == user_id,
+    )).all()
+
+    # Average mastery per category (from joined query)
+    skill_masteries_by_category: Dict[str, list] = {}
+    for row in mastery_rows:
+        if row.mastery_probability is not None:
+            skill_masteries_by_category.setdefault(row.category, []).append(row.mastery_probability)
+
     category_avg = {
-        cat: sum(probs) / len(probs) 
+        cat: sum(probs) / len(probs)
         for cat, probs in skill_masteries_by_category.items()
     }
-    
-    estimated_band = knowledge_tracer.estimate_band_score(category_avg)
-    
-    # Build skills breakdown
-    skills_data = []
-    all_skills = db.query(Skill).all()
-    mastery_map = {m.skill_id: m for m in masteries}
-    
-    for skill in all_skills:
-        mastery = mastery_map.get(skill.id)
-        
-        # Calculate accuracy for this skill
-        skill_attempts = db.query(Attempt).join(Question).filter(
-            Attempt.user_id == user_id,
-            Question.skill_id == skill.id
-        ).all()
-        
-        skill_accuracy = 0
-        if skill_attempts:
-            skill_accuracy = sum(1 for a in skill_attempts if a.is_correct) / len(skill_attempts)
-        
-        skills_data.append({
-            "skill_id": skill.id,
-            "skill_name": skill.name,
-            "category": skill.category,
-            "mastery_probability": mastery.mastery_probability if mastery else 0.3,
-            "attempts_count": mastery.attempts_count if mastery else 0,
-            "accuracy_rate": skill_accuracy,
-            "is_unlocked": mastery.is_unlocked if mastery else (skill.parent_skill_id is None)
-        })
 
+    estimated_band = knowledge_tracer.estimate_band_score(category_avg)
+
+    # Build skills breakdown
+    skills_data = [
+        {
+            "skill_id": row.id,
+            "skill_name": row.name,
+            "category": row.category,
+            "mastery_probability": row.mastery_probability if row.mastery_probability is not None else 0.3,
+            "attempts_count": row.attempts_count if row.attempts_count is not None else 0,
+            "accuracy_rate": 0,  # computed below in SQL
+            "is_unlocked": row.is_unlocked if row.is_unlocked is not None else (row.parent_skill_id is None),
+        }
+        for row in mastery_rows
+    ]
+
+    # Batch accuracy per skill in SQL
+    accuracy_rows = db.query(
+        Question.skill_id,
+        func.count(Attempt.id).label("total"),
+        func.sum(cast(Attempt.is_correct, Integer)).label("correct"),
+    ).join(Question, Question.id == Attempt.question_id).filter(
+        Attempt.user_id == user_id,
+    ).group_by(Question.skill_id).all()
+
+    accuracy_map = {r.skill_id: (r.correct or 0) / r.total for r in accuracy_rows if r.total > 0}
+    for skill in skills_data:
+        skill["accuracy_rate"] = accuracy_map.get(skill["skill_id"], 0)
+
+    # Section bands via SQL aggregation
     section_bands = {}
     for module in ["READING", "LISTENING"]:
-        module_attempts = db.query(Attempt).join(Question).filter(
+        stats = db.query(
+            func.count(Attempt.id).label("total"),
+            func.sum(cast(Attempt.is_correct, Integer)).label("correct"),
+        ).join(Question).filter(
             Attempt.user_id == user_id,
-            Question.module == module
-        ).all()
-        if module_attempts:
-            correct = sum(1 for a in module_attempts if a.is_correct)
-            section_bands[module.lower()] = raw_to_band(correct, module, len(module_attempts))
+            Question.module == module,
+        ).one()
+        if stats.total and stats.total > 0:
+            section_bands[module.lower()] = raw_to_band(stats.correct or 0, module, stats.total)
 
     writing_scores = [w.band_score for w in getattr(user, "writing_attempts", []) if w.band_score]
     speaking_scores = [s.band_score for s in getattr(user, "speaking_attempts", []) if s.band_score]
@@ -132,7 +138,6 @@ def get_dashboard_data(db: Session, user_id: int) -> Dict:
         for item in mistakes
     ]
 
-    next_recommended_session = None
     if weak_question_types:
         weak = weak_question_types[0]
         next_recommended_session = {
@@ -149,7 +154,7 @@ def get_dashboard_data(db: Session, user_id: int) -> Dict:
             "duration_minutes": 30,
             "reason": "Start with adaptive reading to establish your baseline.",
         }
-    
+
     return {
         "username": user.username,
         "level": user.level,
@@ -174,24 +179,22 @@ def get_progress_history(db: Session, user_id: int, days: int = 30) -> List[Dict
     """
     end_date = date.today()
     start_date = end_date - timedelta(days=days)
-    
-    # Get stored metrics
+
     metrics = db.query(DashboardMetric).filter(
         DashboardMetric.user_id == user_id,
         DashboardMetric.date >= datetime.combine(start_date, datetime.min.time())
     ).order_by(DashboardMetric.date).all()
-    
-    history = []
-    for m in metrics:
-        history.append({
+
+    return [
+        {
             "date": m.date,
             "estimated_band": m.estimated_band or 4.0,
             "accuracy_rate": m.accuracy_rate or 0,
             "attempts_count": m.total_attempts or 0,
             "xp_earned": m.xp_earned or 0
-        })
-    
-    return history
+        }
+        for m in metrics
+    ]
 
 
 def update_daily_metrics(db: Session, user_id: int):
@@ -200,48 +203,44 @@ def update_daily_metrics(db: Session, user_id: int):
     Called after each attempt.
     """
     today = datetime.combine(date.today(), datetime.min.time())
-    
-    # Get or create today's metric
+
     metric = db.query(DashboardMetric).filter(
         DashboardMetric.user_id == user_id,
         DashboardMetric.date == today
     ).first()
-    
+
     if not metric:
         metric = DashboardMetric(user_id=user_id, date=today)
         db.add(metric)
-    
-    # Calculate today's stats from attempts
-    today_attempts = db.query(Attempt).filter(
+
+    # Aggregate today's stats in SQL
+    today_stats = db.query(
+        func.count(Attempt.id).label("total"),
+        func.sum(cast(Attempt.is_correct, Integer)).label("correct"),
+        func.avg(Attempt.response_time_ms).label("avg_time"),
+        func.sum(Attempt.xp_earned).label("xp"),
+    ).filter(
         Attempt.user_id == user_id,
         Attempt.created_at >= today
-    ).all()
-    
-    if today_attempts:
-        metric.total_attempts = len(today_attempts)
-        metric.correct_attempts = sum(1 for a in today_attempts if a.is_correct)
-        metric.accuracy_rate = metric.correct_attempts / metric.total_attempts
-        metric.avg_response_time_ms = sum(a.response_time_ms for a in today_attempts) / len(today_attempts)
-        metric.xp_earned = sum(a.xp_earned for a in today_attempts)
-    
-    # Calculate estimated band from current masteries
-    masteries = db.query(UserSkillMastery).filter(
-        UserSkillMastery.user_id == user_id
-    ).all()
-    
-    skill_masteries_by_category = {}
-    for m in masteries:
-        skill = db.query(Skill).filter(Skill.id == m.skill_id).first()
-        if skill:
-            if skill.category not in skill_masteries_by_category:
-                skill_masteries_by_category[skill.category] = []
-            skill_masteries_by_category[skill.category].append(m.mastery_probability)
-    
-    category_avg = {
-        cat: sum(probs) / len(probs) 
-        for cat, probs in skill_masteries_by_category.items()
-    }
-    
+    ).one()
+
+    if today_stats.total and today_stats.total > 0:
+        metric.total_attempts = today_stats.total
+        metric.correct_attempts = today_stats.correct or 0
+        metric.accuracy_rate = (today_stats.correct or 0) / today_stats.total
+        metric.avg_response_time_ms = float(today_stats.avg_time or 0)
+        metric.xp_earned = today_stats.xp or 0
+
+    # Calculate estimated band from current masteries (single JOIN query)
+    category_avg_rows = db.query(
+        Skill.category,
+        func.avg(UserSkillMastery.mastery_probability).label("avg_mastery"),
+    ).join(UserSkillMastery, and_(
+        UserSkillMastery.skill_id == Skill.id,
+        UserSkillMastery.user_id == user_id,
+    )).group_by(Skill.category).all()
+
+    category_avg = {row.category: float(row.avg_mastery) for row in category_avg_rows}
     metric.estimated_band = knowledge_tracer.estimate_band_score(category_avg)
-    
+
     db.commit()

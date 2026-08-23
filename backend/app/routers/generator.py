@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, HttpUrl
 from app.services.content_generator import generator
-from app.services.auth import get_current_user
+from app.routers.auth import get_current_user
 
 router = APIRouter(
     prefix="/generator",

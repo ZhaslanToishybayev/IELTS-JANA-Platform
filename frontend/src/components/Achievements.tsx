@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '@/lib/api';
+import type { NewAchievement } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
     Trophy,
@@ -11,13 +12,13 @@ import {
     Star,
     TrendingUp,
     Lock,
-    Sparkles,
     CheckCircle2,
     AlertCircle,
     Filter,
     Zap,
     ChevronRight
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface Achievement {
     id: number;
@@ -55,7 +56,7 @@ const rarityBorders: Record<string, string> = {
     LEGENDARY: 'border-orange-100 dark:border-orange-900/30',
 };
 
-const categoryLabels: Record<string, { label: string; icon: any }> = {
+const categoryLabels: Record<string, { label: string; icon: LucideIcon }> = {
     STREAK: { label: 'Streaks', icon: Flame },
     LEVEL: { label: 'Levels', icon: Star },
     ACCURACY: { label: 'Accuracy', icon: Target },
@@ -69,13 +70,14 @@ export default function Achievements() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-    const [newAchievements, setNewAchievements] = useState<any[]>([]);
+    const [newAchievements, setNewAchievements] = useState<NewAchievement[]>([]);
 
     useEffect(() => {
         if (token) {
             loadAchievements();
             checkForNewAchievements();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
 
     const loadAchievements = async () => {

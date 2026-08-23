@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { useSoundEffects } from '@/hooks/useSoundEffects';
 import {
     XPGainAnimation,
     LevelUpAnimation,
@@ -66,7 +65,6 @@ export function ReadingPractice({
     initialQuestionType,
 }: ReadingPracticeProps) {
     const { token, updateUser } = useAuth();
-    const { playSuccess, playError } = useSoundEffects();
     const [state, setState] = useState<PracticeState>({
         question: null,
         targetSkill: '',

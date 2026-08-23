@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 from app.services.writing_service import evaluate_essay_with_gemini
-from app.services.auth import get_current_user
+from app.routers.auth import get_current_user
 from app.database import get_db
 from app.models import WritingAttempt
 from sqlalchemy.orm import Session

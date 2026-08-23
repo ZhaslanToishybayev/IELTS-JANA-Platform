@@ -4,25 +4,28 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import type { GeneratedReadingTest } from '@/lib/api';
 
 export default function GeneratorPage() {
-    const { user, token } = useAuth();
+    const { user, token, loading } = useAuth();
     const [url, setUrl] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [generatedtest, setGeneratedTest] = useState<any>(null);
+    const [generatedtest, setGeneratedTest] = useState<GeneratedReadingTest | null>(null);
     const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
     const [submitted, setSubmitted] = useState(false);
     const [score, setScore] = useState(0);
+    const [error, setError] = useState<string | null>(null);
 
     const handleGenerate = async () => {
         if (!url) return;
         setIsLoading(true);
+        setError(null);
         try {
             if (!token) return;
             const res = await api.generateReadingTest(token, url);
             setGeneratedTest(res);
         } catch (err) {
-            alert('Failed to generate test. Make sure the URL is a valid article.');
+            setError('Failed to generate test. Make sure the URL is a valid article.');
             console.error(err);
         } finally {
             setIsLoading(false);
@@ -36,7 +39,7 @@ export default function GeneratorPage() {
     const submitTest = () => {
         if (!generatedtest) return;
         let correct = 0;
-        generatedtest.questions.forEach((q: any, idx: number) => {
+        generatedtest.questions.forEach((q, idx) => {
             if (userAnswers[idx]?.toLowerCase() === q.correct_answer.toLowerCase()) {
                 correct++;
             }
@@ -44,6 +47,14 @@ export default function GeneratorPage() {
         setScore(correct);
         setSubmitted(true);
     };
+
+    if (loading) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     if (!user) return null;
 
@@ -86,6 +97,12 @@ export default function GeneratorPage() {
                             </button>
                         </div>
 
+                        {error && (
+                            <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm max-w-2xl mx-auto">
+                                {error}
+                            </div>
+                        )}
+
                         <div className="mt-8 text-sm text-white/40">
                             Try: BBC News, Science Daily, The Guardian, TechCrunch
                         </div>
@@ -104,7 +121,7 @@ export default function GeneratorPage() {
                         </motion.div>
 
                         <div className="space-y-6">
-                            {generatedtest.questions.map((q: any, idx: number) => (
+                            {generatedtest.questions.map((q, idx) => (
                                 <motion.div
                                     key={idx}
                                     initial={{ opacity: 0, y: 10 }}

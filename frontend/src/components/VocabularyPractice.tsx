@@ -6,12 +6,10 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
     RotateCcw,
-    Check,
     Sparkles,
     BookOpen,
     Info,
     Quote,
-    ChevronRight,
     Trophy,
     ArrowRight
 } from 'lucide-react';
@@ -31,7 +29,7 @@ interface VocabularyPracticeProps {
 
 export default function VocabularyPractice({ initialCards }: VocabularyPracticeProps) {
     const { token } = useAuth();
-    const [cards, setCards] = useState<Flashcard[]>(initialCards);
+    const [cards] = useState<Flashcard[]>(initialCards);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
     const [sessionComplete, setSessionComplete] = useState(false);

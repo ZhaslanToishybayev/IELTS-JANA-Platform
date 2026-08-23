@@ -3,7 +3,7 @@ import shutil
 import os
 import uuid
 from app.services.speaking_service import analyze_audio_with_gemini
-from app.services.auth import get_current_user
+from app.routers.auth import get_current_user
 from app.database import get_db
 from app.models import SpeakingAttempt
 from sqlalchemy.orm import Session

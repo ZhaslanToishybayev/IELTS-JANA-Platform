@@ -1,11 +1,10 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { ReactNode, useEffect } from 'react';
+import { ReactNode } from 'react';
 import { useSoundEffects } from '@/hooks/useSoundEffects';
 import {
     Zap,
-    Trophy,
     Flame,
     Star,
     CheckCircle2,
@@ -14,28 +13,6 @@ import {
     Lock,
     ArrowRight
 } from 'lucide-react';
-
-interface GamificationProps {
-    xpGained?: number | null;
-    levelUp?: { level: number } | null;
-    streak?: { count: number } | null;
-}
-
-export default function Gamification({ xpGained, levelUp, streak }: GamificationProps) {
-    const { playLevelUp } = useSoundEffects();
-
-    useEffect(() => {
-        if (levelUp) {
-            playLevelUp();
-        }
-    }, [levelUp, playLevelUp]);
-
-    return (
-        <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
-            {/* Orchestrates effects */}
-        </div>
-    );
-}
 
 interface XPGainProps {
     amount: number;
@@ -175,12 +152,11 @@ export function ProgressRing({ progress, size = 120, strokeWidth = 8, children }
 
 interface MasteryBarProps {
     skillName: string;
-    mastery: number; // 0-1
-    category: string;
+    mastery: number;
     isUnlocked: boolean;
 }
 
-export function MasteryBar({ skillName, mastery, category, isUnlocked }: MasteryBarProps) {
+export function MasteryBar({ skillName, mastery, isUnlocked }: MasteryBarProps) {
     const colorClass = isUnlocked ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700';
 
     return (
