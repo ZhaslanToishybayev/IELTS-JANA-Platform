@@ -507,7 +507,7 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
     const answeredCount = Object.keys(answers).length;
     const pct = Math.round((answeredCount / Math.max(questions.length, 1)) * 100);
     const isListening = section === 'LISTENING';
-    const groupedQuestions = section === 'READING' ? groupByPassage(questions) : null;
+    const groupedQuestions = section === 'READING' ? groupByPassage(questions) : isListening ? groupBySection(questions) : null;
 
     // TTS state for listening
     const [isPlaying, setIsPlaying] = useState(false);
@@ -519,25 +519,23 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
         const synth = window.speechSynthesis;
         if (synth.speaking) { synth.cancel(); setIsPlaying(false); setCurrentPlayingIdx(null); return; }
 
-        const passages = questions.filter(q => q.passage);
-        const uniquePassages: { title: string; text: string }[] = [];
+        const passages: { title: string; text: string }[] = [];
         const seen = new Set<string>();
-        for (const q of passages) {
-            if (!seen.has(q.passage)) {
+        for (const q of questions) {
+            if (q.passage && !seen.has(q.passage)) {
                 seen.add(q.passage);
-                uniquePassages.push({ title: q.passage_title || 'Passage', text: q.passage });
+                passages.push({ title: q.section || 'Passage', text: q.passage });
             }
         }
-        if (uniquePassages.length === 0) return;
+        if (passages.length === 0) return;
 
         setIsPlaying(true);
         let idx = 0;
 
         const speakNext = () => {
-            if (idx >= uniquePassages.length) { setIsPlaying(false); setCurrentPlayingIdx(null); return; }
-            const p = uniquePassages[idx];
+            if (idx >= passages.length) { setIsPlaying(false); setCurrentPlayingIdx(null); return; }
             setCurrentPlayingIdx(idx);
-            const utt = new SpeechSynthesisUtterance(p.text);
+            const utt = new SpeechSynthesisUtterance(passages[idx].text);
             utt.lang = 'en-GB';
             utt.rate = 0.95;
             utt.onend = () => { idx++; speakNext(); };
@@ -611,8 +609,8 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
             )}
 
             <div className="flex-1 overflow-y-auto space-y-4 pb-4">
-                {groupedQuestions ? (
-                    groupedQuestions.map((group, gIdx) => (
+                {groupedQuestions && !isListening && (
+                    groupedQuestions.map((group: any, gIdx: number) => (
                         <div key={gIdx} className="space-y-4">
                             {group.passage && (
                                 <div className="card p-6">
@@ -621,24 +619,9 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                                             <BookOpen className="w-4 h-4 text-purple-500" />
                                             {group.passage_title || `Passage ${gIdx + 1}`}
                                         </h4>
-                                        {!isListening && (
-                                            <span className="text-xs text-slate-400">Read carefully</span>
-                                        )}
+                                        <span className="text-xs text-slate-400">Read carefully</span>
                                     </div>
-                                    {isListening ? (
-                                        <div className="text-center py-6">
-                                            <Volume2 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
-                                            <p className="text-sm text-slate-500 font-medium mb-3">Audio passage — click play to listen</p>
-                                            <button
-                                                onClick={() => playSinglePassage(group.passage!, group.passage_title || `Passage ${gIdx + 1}`)}
-                                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition"
-                                            >
-                                                <Volume2 className="w-4 h-4 inline mr-1" /> Play This Passage
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">{group.passage}</div>
-                                    )}
+                                    <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">{group.passage}</div>
                                 </div>
                             )}
                             {group.questions.map((q: any, idx: number) => (
@@ -646,29 +629,45 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                             ))}
                         </div>
                     ))
-                ) : (
-                    questions.map((q, idx) => (
-                        <div key={q.id}>
-                            {isListening && q.passage && idx === questions.findIndex(qq => qq.passage === q.passage) && (
-                                <div className="card p-6 mb-4">
+                )}
+
+                {groupedQuestions && isListening && (
+                    groupedQuestions.map((group: any, gIdx: number) => {
+                        const sectionPassages = questions.filter(q => q.section === group.section_label && q.passage);
+                        const uniquePassages = [...new Set(sectionPassages.map(q => q.passage))];
+                        const passageText = uniquePassages.filter(Boolean).join('\n\n');
+                        return (
+                            <div key={gIdx} className="space-y-4">
+                                <div className="card p-5 border-l-4 border-l-blue-500">
                                     <div className="flex items-center justify-between mb-3">
                                         <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
-                                            <Volume2 className="w-4 h-4 text-blue-500" />
-                                            Listening Passage
+                                            <Headphones className="w-4 h-4 text-blue-500" />
+                                            {group.section_label}
+                                            <span className="text-xs font-normal text-slate-400 ml-1">({group.questions.length} questions)</span>
                                         </h4>
                                     </div>
-                                    <div className="text-center py-4">
+                                    <div className="text-center py-3">
                                         <button
-                                            onClick={() => playSinglePassage(q.passage, q.passage_title || 'Listening Passage')}
-                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition"
+                                            onClick={() => passageText ? playSinglePassage(passageText, group.section_label) : undefined}
+                                            disabled={!passageText}
+                                            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition inline-flex items-center gap-2"
                                         >
-                                            <Volume2 className="w-4 h-4 inline mr-1" /> Play Audio
+                                            <Volume2 className="w-4 h-4" /> Play Audio
                                         </button>
+                                        {!passageText && <p className="text-xs text-slate-400 mt-2">No audio transcript available</p>}
                                     </div>
                                 </div>
-                            )}
-                            <QuestionCard question={q} index={idx} answer={answers[q.id] || ''} onAnswer={(ans) => setAnswer(q.id, ans)} section={section} />
-                        </div>
+                                {group.questions.map((q: any, idx: number) => (
+                                    <QuestionCard key={q.id} question={q} index={group.offset + idx} answer={answers[q.id] || ''} onAnswer={(ans) => setAnswer(q.id, ans)} section={section} />
+                                ))}
+                            </div>
+                        );
+                    })
+                )}
+
+                {!groupedQuestions && (
+                    questions.map((q, idx) => (
+                        <QuestionCard key={q.id} question={q} index={idx} answer={answers[q.id] || ''} onAnswer={(ans) => setAnswer(q.id, ans)} section={section} />
                     ))
                 )}
             </div>
@@ -693,6 +692,22 @@ function groupByPassage(questions: any[]) {
     for (const q of questions) {
         if (!current || current.passage !== (q.passage || null)) {
             current = { passage: q.passage || null, passage_title: q.passage_title || null, questions: [], offset };
+            groups.push(current);
+        }
+        current.questions.push(q);
+        offset++;
+    }
+    return groups;
+}
+
+function groupBySection(questions: any[]) {
+    const groups: { section_label: string; questions: any[]; offset: number }[] = [];
+    let current: any = null;
+    let offset = 0;
+    for (const q of questions) {
+        const sectionLabel = q.section || 'Section 1';
+        if (!current || current.section_label !== sectionLabel) {
+            current = { section_label: sectionLabel, questions: [], offset };
             groups.push(current);
         }
         current.questions.push(q);
