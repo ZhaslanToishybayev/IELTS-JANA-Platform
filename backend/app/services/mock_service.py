@@ -163,50 +163,47 @@ class MockExamService:
         session.answers = current_answers
         flag_modified(session, "answers")
 
-        from app.services.writing_service import evaluate_essay_locally, _valid_writing_result
+        from app.services.writing_service import evaluate_essay_with_gemini
 
         combined_text = ""
         task_scores = {}
         all_feedback = {}
+        all_criteria = {"task_response": [], "coherence_cohesion": [], "lexical_resource": [], "grammatical_range": []}
 
-        if task1_text:
-            t1_result = _valid_writing_result(evaluate_essay_locally(task1_text, "Task 1", ""))
-            t1_score = t1_result.get("band_score", 5.0) if t1_result else 5.0
-            t1_words = len([w for w in task1_text.split() if w.strip()])
-            task_scores["task1"] = t1_score
-            all_feedback["task1"] = {
-                "words": t1_words,
-                "score": t1_score,
-                "feedback": t1_result.get("overall_feedback", "") if t1_result else "",
-                "criteria": {
-                    k: {"score": v.get("score", 0), "comment": v.get("comment", "")}
-                    for k, v in (t1_result or {}).items()
-                    if isinstance(v, dict)
-                },
-            }
-            combined_text += task1_text
+        import asyncio
 
-        if task2_text:
-            t2_result = _valid_writing_result(evaluate_essay_locally(task2_text, "Task 2", ""))
-            t2_score = t2_result.get("band_score", 5.0) if t2_result else 5.0
-            t2_words = len([w for w in task2_text.split() if w.strip()])
-            task_scores["task2"] = t2_score
-            all_feedback["task2"] = {
-                "words": t2_words,
-                "score": t2_score,
-                "feedback": t2_result.get("overall_feedback", "") if t2_result else "",
-                "criteria": {
-                    k: {"score": v.get("score", 0), "comment": v.get("comment", "")}
-                    for k, v in (t2_result or {}).items()
-                    if isinstance(v, dict)
-                },
-            }
-            if combined_text:
-                combined_text += "\n\n"
-            combined_text += task2_text
+        for label, text, task_type in [("task1", task1_text, "Task 1"), ("task2", task2_text, "Task 2")]:
+            if text.strip():
+                try:
+                    result = asyncio.run(evaluate_essay_with_gemini(text, task_type, ""))
+                except Exception:
+                    result = {"band_score": 5.0}
+                score = result.get("band_score", 5.0)
+                words = len([w for w in text.split() if w.strip()])
+                criteria = {}
+                for key in ["task_response", "coherence_cohesion", "lexical_resource", "grammatical_range"]:
+                    if key in result and isinstance(result[key], dict):
+                        criteria[key] = {"score": result[key].get("score", score), "comment": result[key].get("comment", "")}
+                        all_criteria[key].append(result[key].get("score", score))
+                    else:
+                        criteria[key] = {"score": score, "comment": ""}
+                        all_criteria[key].append(score)
+                task_scores[label] = score
+                all_feedback[label] = {
+                    "words": words,
+                    "score": score,
+                    "feedback": result.get("overall_feedback", ""),
+                    "criteria": criteria,
+                    "improvements": result.get("improvements", []),
+                }
+                combined_text += text + "\n\n"
+
+        avg_criteria = {}
+        for key, scores in all_criteria.items():
+            if scores:
+                avg_criteria[key] = round(sum(scores) / len(scores) * 2) / 2
 
         if not task_scores:
-            combined_text = ""
             overall_writing = 5.0
         elif len(task_scores) == 2:
             overall_writing = round((task_scores["task1"] + task_scores["task2"]) * 2 / 2) / 2
@@ -216,8 +213,9 @@ class MockExamService:
         current_scores = dict(session.scores or {})
         current_scores["writing"] = overall_writing
         current_scores["writing_raw"] = {
-            "total_words": len([w for w in combined_text.split() if w.strip]),
+            "total_words": len([w for w in combined_text.split() if w.strip()]),
             "tasks": all_feedback,
+            "criteria": avg_criteria,
             "task1_words": all_feedback.get("task1", {}).get("words", 0),
             "task2_words": all_feedback.get("task2", {}).get("words", 0),
         }
@@ -242,20 +240,35 @@ class MockExamService:
         session.answers = current_answers
         flag_modified(session, "answers")
 
-        def _score_text(text: str) -> dict:
-            wc = len([w for w in text.split() if w.strip()])
-            sentences = [s.strip() for s in text.replace("?", ".").replace("!", ".").split(".") if s.strip()]
-            unique = len({w.lower().strip(".,;:!?") for w in text.split()})
-            length_score = 6.5 if wc >= 180 else 6.0 if wc >= 120 else 5.0 if wc >= 70 else 4.0
-            variety_score = 6.5 if unique / max(wc, 1) >= 0.6 else 6.0 if unique / max(wc, 1) >= 0.45 else 5.0
-            coherence_score = 6.5 if len(sentences) >= 8 else 6.0 if len(sentences) >= 5 else 5.0 if len(sentences) >= 3 else 4.0
-            band = round((length_score + variety_score + coherence_score) * 2 / 3) / 2
-            return {"words": wc, "sentences": len(sentences), "unique_words": unique, "band": band}
+        from app.services.speaking_service import evaluate_text_speaking
 
         part_results = {}
+        all_criteria = {"fluency_coherence": [], "lexical_resource": [], "grammatical_range": [], "pronunciation": []}
+
         for label, text in [("part1", part1), ("part2", part2), ("part3", part3)]:
             if text.strip():
-                part_results[label] = _score_text(text)
+                prompt = f"IELTS Speaking {label.upper()} response"
+                import asyncio
+                try:
+                    result = asyncio.run(evaluate_text_speaking(text, prompt))
+                except Exception:
+                    result = {"band_score": 5.0}
+                band = result.get("band_score", 5.0)
+                criteria = {}
+                for key in ["fluency_coherence", "lexical_resource", "grammatical_range", "pronunciation"]:
+                    if key in result and isinstance(result[key], dict):
+                        criteria[key] = {"score": result[key].get("score", band), "comment": result[key].get("comment", "")}
+                        all_criteria[key].append(result[key].get("score", band))
+                    else:
+                        criteria[key] = {"score": band, "comment": ""}
+                        all_criteria[key].append(band)
+                part_results[label] = {
+                    "band": band,
+                    "words": len([w for w in text.split() if w.strip()]),
+                    "criteria": criteria,
+                    "feedback": result.get("overall_feedback", ""),
+                    "improvements": result.get("improvements", []),
+                }
 
         if not part_results:
             overall_speaking = 5.0
@@ -264,12 +277,17 @@ class MockExamService:
         else:
             overall_speaking = round(sum(p["band"] for p in part_results.values()) / len(part_results) * 2) / 2
 
+        avg_criteria = {}
+        for key, scores in all_criteria.items():
+            if scores:
+                avg_criteria[key] = round(sum(scores) / len(scores) * 2) / 2
+
         current_scores = dict(session.scores or {})
         current_scores["speaking"] = overall_speaking
         current_scores["speaking_raw"] = {
             "parts": part_results,
+            "criteria": avg_criteria,
             "total_words": sum(p["words"] for p in part_results.values()),
-            "total_sentences": sum(p["sentences"] for p in part_results.values()),
         }
         current_scores["overall"] = overall_band([
             current_scores.get("listening", 0),

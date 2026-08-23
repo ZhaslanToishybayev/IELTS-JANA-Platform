@@ -1240,16 +1240,42 @@ function ReviewScreen({ section, result, onContinue, onBack }: { section: Sectio
     const sectionScore = scores[section.toLowerCase()] || 0;
     const raw = scores[`${section.toLowerCase()}_raw`] || {};
 
+    const CRITERIA_LABELS: Record<string, string> = {
+        fluency_coherence: 'Fluency & Coherence',
+        lexical_resource: 'Lexical Resource',
+        grammatical_range: 'Grammatical Range & Accuracy',
+        task_response: 'Task Response / Achievement',
+        coherence_cohesion: 'Coherence & Cohesion',
+        pronunciation: 'Pronunciation',
+    };
+
+    const criteriaData = raw.criteria || {};
+
     return (
         <div className="max-w-2xl mx-auto py-10 text-center">
-            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card p-12 mb-8">
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, y: 0 }} className="card p-8 md:p-12 mb-8">
                 <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-6" />
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2">{config.title} Complete!</h2>
-                <div className="text-6xl font-black text-blue-600 my-6">{typeof sectionScore === 'number' ? sectionScore.toFixed(1) : sectionScore}</div>
+                <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mb-2">{config.title} Complete!</h2>
+                <div className="text-5xl md:text-6xl font-black text-blue-600 my-6">{typeof sectionScore === 'number' ? sectionScore.toFixed(1) : sectionScore}</div>
                 <p className="text-slate-500 font-medium">Your estimated band score</p>
 
+                {Object.keys(criteriaData).length > 0 && (
+                    <div className="mt-8 space-y-3">
+                        <h4 className="text-sm font-black text-slate-500 uppercase tracking-wider">IELTS Criteria Breakdown</h4>
+                        {Object.entries(criteriaData).map(([key, data]: [string, any]) => (
+                            <div key={key} className="text-left max-w-md mx-auto p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{CRITERIA_LABELS[key] || key}</span>
+                                    <span className="font-black text-blue-600 text-sm">{data.score?.toFixed(1)}</span>
+                                </div>
+                                {data.comment && <p className="text-slate-500 text-xs leading-relaxed">{data.comment}</p>}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {raw.correct !== undefined && (
-                    <div className="mt-6 flex items-center justify-center gap-8 text-sm">
+                    <div className="mt-6 flex items-center justify-center gap-6 md:gap-8 text-sm">
                         <div><span className="font-black text-slate-900 dark:text-white text-lg">{raw.correct}</span> <span className="text-slate-500">correct</span></div>
                         <div><span className="font-black text-slate-900 dark:text-white text-lg">{raw.total}</span> <span className="text-slate-500">total</span></div>
                         <div><span className="font-black text-slate-900 dark:text-white text-lg">{raw.total ? Math.round(raw.correct / raw.total * 100) : 0}%</span> <span className="text-slate-500">accuracy</span></div>
@@ -1257,13 +1283,23 @@ function ReviewScreen({ section, result, onContinue, onBack }: { section: Sectio
                 )}
 
                 {raw.tasks && Object.keys(raw.tasks).length > 0 && (
-                    <div className="mt-6 space-y-3 text-sm">
+                    <div className="mt-6 space-y-4 text-sm">
                         {Object.entries(raw.tasks).map(([task, data]: [string, any]) => (
-                            <div key={task} className="text-left max-w-md mx-auto p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                                <div className="flex items-center justify-between mb-1">
+                            <div key={task} className="text-left max-w-md mx-auto p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                <div className="flex items-center justify-between mb-2">
                                     <span className="font-black text-slate-900 dark:text-white">{task === 'task1' ? 'Task 1' : 'Task 2'}</span>
                                     <span className="font-bold text-blue-600">{data.score?.toFixed(1)} · {data.words}w</span>
                                 </div>
+                                {data.criteria && Object.keys(data.criteria).length > 0 && (
+                                    <div className="space-y-1.5 mb-2">
+                                        {Object.entries(data.criteria).map(([key, c]: [string, any]) => (
+                                            <div key={key} className="flex items-center justify-between text-xs">
+                                                <span className="text-slate-500">{CRITERIA_LABELS[key] || key}</span>
+                                                <span className="font-bold text-slate-700 dark:text-slate-300">{c.score?.toFixed(1)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 {data.feedback && <p className="text-slate-500 text-xs">{data.feedback}</p>}
                             </div>
                         ))}
@@ -1271,13 +1307,24 @@ function ReviewScreen({ section, result, onContinue, onBack }: { section: Sectio
                 )}
 
                 {raw.parts && Object.keys(raw.parts).length > 0 && (
-                    <div className="mt-6 space-y-3 text-sm">
+                    <div className="mt-6 space-y-4 text-sm">
                         {Object.entries(raw.parts).map(([part, data]: [string, any]) => (
-                            <div key={part} className="text-left max-w-md mx-auto p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                                <div className="flex items-center justify-between mb-1">
+                            <div key={part} className="text-left max-w-md mx-auto p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                <div className="flex items-center justify-between mb-2">
                                     <span className="font-black text-slate-900 dark:text-white">{part === 'part1' ? 'Part 1' : part === 'part2' ? 'Part 2' : 'Part 3'}</span>
                                     <span className="font-bold text-blue-600">{data.band?.toFixed(1)} · {data.words}w</span>
                                 </div>
+                                {data.criteria && Object.keys(data.criteria).length > 0 && (
+                                    <div className="space-y-1.5 mb-2">
+                                        {Object.entries(data.criteria).map(([key, c]: [string, any]) => (
+                                            <div key={key} className="flex items-center justify-between text-xs">
+                                                <span className="text-slate-500">{CRITERIA_LABELS[key] || key}</span>
+                                                <span className="font-bold text-slate-700 dark:text-slate-300">{c.score?.toFixed(1)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {data.feedback && <p className="text-slate-500 text-xs italic">{data.feedback}</p>}
                             </div>
                         ))}
                     </div>
