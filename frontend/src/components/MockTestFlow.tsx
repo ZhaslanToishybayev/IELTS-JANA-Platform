@@ -69,6 +69,37 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
     const [speakingPrompts, setSpeakingPrompts] = useState<{ part1: SpeakingPromptData | null; part2: SpeakingPromptData | null; part3: SpeakingPromptData | null } | null>(null);
     const [listeningVoices, setListeningVoices] = useState<string[]>([]);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const STORAGE_KEY = 'ielts_mock_progress';
+
+    // Persist progress to localStorage
+    const saveProgress = useCallback((data: Record<string, any>) => {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, savedAt: Date.now() })); } catch {}
+    }, []);
+
+    // Restore progress from localStorage on mount
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return;
+            const saved = JSON.parse(raw);
+            if (!saved?.sessionId || !saved?.activeSection || !saved?.phase || saved.phase === 'LANDING' || saved.phase === 'RESULTS') return;
+            const elapsed = Math.floor((Date.now() - (saved.savedAt || 0)) / 1000);
+            setSessionId(saved.sessionId);
+            setActiveSection(saved.activeSection);
+            setPhase(saved.phase);
+            setQuestions(saved.questions || []);
+            setAnswers(saved.answers || {});
+            const config = SECTIONS.find(s => s.id === saved.activeSection);
+            const corrected = Math.max(0, (config?.duration || 3600) - elapsed);
+            setTimeLeft(corrected);
+        } catch {}
+    }, []);
+
+    // Auto-save when in TEST phase
+    useEffect(() => {
+        if (phase !== 'TEST' || !activeSection || !sessionId) return;
+        saveProgress({ sessionId, phase, activeSection, answers, questions, timeLeft });
+    }, [phase, activeSection, sessionId, answers, questions, timeLeft, saveProgress]);
 
     useEffect(() => {
         if (phase !== 'TEST' || isPaused || timeLeft <= 0) return;
@@ -156,6 +187,7 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
                 setAllResults(prev => ({ ...prev, [activeSection]: res! }));
             }
             setPhase('REVIEW');
+            try { localStorage.removeItem(STORAGE_KEY); } catch {}
         } catch (err: any) {
             setError(err.message || 'Failed to submit');
         } finally {
@@ -171,6 +203,7 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
         setAnswers({});
         setWritingPrompts(null);
         setSpeakingPrompts(null);
+        try { localStorage.removeItem(STORAGE_KEY); } catch {}
     };
 
     const goToNextSection = () => {
