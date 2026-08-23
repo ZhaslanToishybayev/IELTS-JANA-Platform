@@ -67,6 +67,7 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
     const [error, setError] = useState<string | null>(null);
     const [writingPrompts, setWritingPrompts] = useState<{ task1: WritingPromptData | null; task2: WritingPromptData | null } | null>(null);
     const [speakingPrompts, setSpeakingPrompts] = useState<{ part1: SpeakingPromptData | null; part2: SpeakingPromptData | null; part3: SpeakingPromptData | null } | null>(null);
+    const [listeningVoices, setListeningVoices] = useState<string[]>([]);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
@@ -104,6 +105,11 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
             } else {
                 const data = await api.getMockQuestions(token, section, 40, sessionId || undefined);
                 setQuestions(data.questions || []);
+                // Fetch random voices for listening sections
+                if (section === 'LISTENING') {
+                    const { voices } = await api.getRandomTtsVoices(4, token);
+                    setListeningVoices(voices);
+                }
             }
 
             setAnswers({});
@@ -294,6 +300,7 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
                                 onSubmit={handleSubmit}
                                 loading={loading}
                                 error={error}
+                                listeningVoices={listeningVoices}
                             />
                         )}
                     </motion.div>
@@ -491,7 +498,7 @@ function PromptCard({ icon, label, sublabel, text, tips, questions }: {
 }
 
 // ========== TEST SCREEN (Listening/Reading) ==========
-function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
+function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused, setIsPaused, onSubmit, loading, error, listeningVoices }: {
     section: Section;
     questions: any[];
     answers: Record<number | string, string>;
@@ -502,6 +509,7 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
     onSubmit: () => void;
     loading: boolean;
     error: string | null;
+    listeningVoices?: string[];
 }) {
     const config = SECTIONS.find(s => s.id === section)!;
     const answeredCount = Object.keys(answers).length;
@@ -518,15 +526,22 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
         if (!isListening) return;
         if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setIsPlaying(false); setCurrentPlayingIdx(null); return; }
 
-        const passages: { title: string; text: string }[] = [];
+        const passages: { title: string; text: string; section: string }[] = [];
         const seen = new Set<string>();
         for (const q of questions) {
             if (q.passage && !seen.has(q.passage)) {
                 seen.add(q.passage);
-                passages.push({ title: q.section || 'Passage', text: q.passage });
+                passages.push({ title: q.section || 'Passage', text: q.passage, section: q.section || '' });
             }
         }
         if (passages.length === 0) return;
+
+        // Map each unique section label to a voice index for accent rotation
+        const sectionLabels = [...new Set(passages.map(p => p.section))];
+        const sectionVoiceMap: Record<string, string> = {};
+        sectionLabels.forEach((label, i) => {
+            sectionVoiceMap[label] = listeningVoices?.[i % listeningVoices.length] || 'random';
+        });
 
         setIsPlaying(true);
         let idx = 0;
@@ -534,24 +549,29 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
         const playNext = () => {
             if (idx >= passages.length) { setIsPlaying(false); setCurrentPlayingIdx(null); audioRef.current = null; return; }
             setCurrentPlayingIdx(idx);
-            const audio = new Audio(api.getTtsUrl(passages[idx].text));
+            const voice = sectionVoiceMap[passages[idx].section] || 'random';
+            const audio = new Audio(api.getTtsUrl(passages[idx].text, voice));
             audioRef.current = audio;
             audio.onended = () => { idx++; playNext(); };
             audio.onerror = () => { setIsPlaying(false); setCurrentPlayingIdx(null); audioRef.current = null; };
             audio.play().catch(() => { setIsPlaying(false); setCurrentPlayingIdx(null); });
         };
         playNext();
-    }, [isListening, questions]);
+    }, [isListening, questions, listeningVoices]);
 
-    const playSinglePassage = useCallback((passage: string) => {
+    const playSinglePassage = useCallback((passage: string, sectionLabel: string) => {
         if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setIsPlaying(false); setCurrentPlayingIdx(null); }
         setIsPlaying(true);
-        const audio = new Audio(api.getTtsUrl(passage));
+        // Find the voice for this section label
+        const sectionLabels = [...new Set(questions.map((q: any) => q.section || ''))];
+        const voiceIdx = sectionLabels.indexOf(sectionLabel);
+        const voice = listeningVoices?.[voiceIdx >= 0 ? voiceIdx % listeningVoices.length : 0] || 'random';
+        const audio = new Audio(api.getTtsUrl(passage, voice));
         audioRef.current = audio;
         audio.onended = () => { setIsPlaying(false); setCurrentPlayingIdx(null); audioRef.current = null; };
         audio.onerror = () => { setIsPlaying(false); setCurrentPlayingIdx(null); audioRef.current = null; };
         audio.play().catch(() => { setIsPlaying(false); setCurrentPlayingIdx(null); });
-    }, []);
+    }, [questions, listeningVoices]);
 
     const stopPlayback = useCallback(() => {
         if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
@@ -639,10 +659,17 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                                             {group.section_label}
                                             <span className="text-xs font-normal text-slate-400 ml-1">({group.questions.length} questions)</span>
                                         </h4>
+                                        {listeningVoices && listeningVoices.length > 0 && (() => {
+                                            const sectionLabels = [...new Set(questions.map((q: any) => q.section || ''))];
+                                            const voiceIdx = sectionLabels.indexOf(group.section_label);
+                                            const voiceId = listeningVoices![voiceIdx >= 0 ? voiceIdx % listeningVoices!.length : 0] || '';
+                                            const accent = voiceId.replace(/^en-/, '').split('-')[0];
+                                            return <span className="text-[10px] font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full">{accent}</span>;
+                                        })()}
                                     </div>
                                     <div className="text-center py-3">
                                         <button
-                                            onClick={() => passageText ? playSinglePassage(passageText) : undefined}
+                                            onClick={() => passageText ? playSinglePassage(passageText, group.section_label) : undefined}
                                             disabled={!passageText}
                                             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition inline-flex items-center gap-2"
                                         >

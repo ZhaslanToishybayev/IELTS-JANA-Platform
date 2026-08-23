@@ -949,6 +949,10 @@ class ApiClient {
         return `${this.baseUrl}/tts?${params.toString()}`;
     }
 
+    async getRandomTtsVoices(count = 4, token?: string) {
+        return this.fetch<{ voices: string[] }>(`/tts/random-voices?count=${count}`, { token });
+    }
+
 }
 
 export const api = new ApiClient(API_URL);
