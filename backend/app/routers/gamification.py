@@ -68,22 +68,25 @@ async def get_skill_tree(
 
 @router.get("/leaderboard")
 async def get_leaderboard(
-    limit: int = 10,
+    limit: int = 20,
+    offset: int = 0,
     db: Session = Depends(get_db)
 ):
     """
-    Get the top users by XP.
-    
-    Note: Optional for MVP, basic implementation.
+    Get users ranked by XP with pagination.
     """
-    users = db.query(User).order_by(User.xp.desc()).limit(limit).all()
+    total = db.query(User).count()
+    users = db.query(User).order_by(User.xp.desc()).offset(offset).limit(limit).all()
     
-    return [
-        {
-            "rank": i + 1,
-            "username": u.username,
-            "xp": u.xp,
-            "level": u.level
-        }
-        for i, u in enumerate(users)
-    ]
+    return {
+        "total": total,
+        "entries": [
+            {
+                "rank": offset + i + 1,
+                "username": u.username,
+                "xp": u.xp,
+                "level": u.level
+            }
+            for i, u in enumerate(users)
+        ],
+    }

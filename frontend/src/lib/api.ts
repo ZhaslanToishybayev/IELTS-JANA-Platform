@@ -543,13 +543,16 @@ class ApiClient {
         }>('/gamification/skill-tree', { token });
     }
 
-    async getLeaderboard(token: string, limit = 10) {
+    async getLeaderboard(token: string, limit = 20, offset = 0) {
         return this.fetch<{
-            rank: number;
-            username: string;
-            xp: number;
-            level: number;
-        }[]>(`/gamification/leaderboard?limit=${limit}`, { token });
+            total: number;
+            entries: {
+                rank: number;
+                username: string;
+                xp: number;
+                level: number;
+            }[];
+        }>(`/gamification/leaderboard?limit=${limit}&offset=${offset}`, { token });
     }
 
     // Writing

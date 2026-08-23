@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta, UTC
 
 from ..database import get_db
-from ..models import User, Question, Skill, Achievement, UserAchievement, Attempt, TestSet
+from ..models import User, Question, Skill, Achievement, UserAchievement, Attempt, TestSet, WritingPrompt, SpeakingPrompt
 from ..routers.auth import get_current_user
 from ..config import get_settings
 
@@ -524,3 +524,179 @@ async def delete_achievement(
     db.commit()
     
     return {"message": "Achievement deleted successfully"}
+
+
+# ============ Writing Prompt CRUD ============
+
+class WritingPromptCreate(BaseModel):
+    task_type: str
+    title: str
+    prompt_text: str
+    category: Optional[str] = None
+    word_limit: int = 250
+    time_limit_minutes: int = 40
+    tips: Optional[List[str]] = None
+
+
+@router.get("/prompts/writing")
+async def admin_list_writing_prompts(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompts = db.query(WritingPrompt).order_by(WritingPrompt.id.desc()).all()
+    return {
+        "prompts": [
+            {
+                "id": p.id, "task_type": p.task_type, "title": p.title,
+                "prompt_text": p.prompt_text, "category": p.category,
+                "word_limit": p.word_limit, "time_limit_minutes": p.time_limit_minutes,
+                "tips": p.tips or [], "is_active": p.is_active, "created_at": str(p.created_at),
+            }
+            for p in prompts
+        ]
+    }
+
+
+@router.post("/prompts/writing", status_code=status.HTTP_201_CREATED)
+async def admin_create_writing_prompt(
+    data: WritingPromptCreate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompt = WritingPrompt(**data.model_dump())
+    db.add(prompt)
+    db.commit()
+    db.refresh(prompt)
+    return {"id": prompt.id, "message": "Writing prompt created"}
+
+
+@router.put("/prompts/writing/{prompt_id}")
+async def admin_update_writing_prompt(
+    prompt_id: int,
+    data: WritingPromptCreate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompt = db.query(WritingPrompt).filter(WritingPrompt.id == prompt_id).first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    for field, value in data.model_dump().items():
+        setattr(prompt, field, value)
+    db.commit()
+    return {"message": "Writing prompt updated"}
+
+
+@router.delete("/prompts/writing/{prompt_id}")
+async def admin_delete_writing_prompt(
+    prompt_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompt = db.query(WritingPrompt).filter(WritingPrompt.id == prompt_id).first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    db.delete(prompt)
+    db.commit()
+    return {"message": "Writing prompt deleted"}
+
+
+@router.post("/prompts/writing/{prompt_id}/toggle")
+async def admin_toggle_writing_prompt(
+    prompt_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompt = db.query(WritingPrompt).filter(WritingPrompt.id == prompt_id).first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    prompt.is_active = not prompt.is_active
+    db.commit()
+    return {"is_active": prompt.is_active}
+
+
+# ============ Speaking Prompt CRUD ============
+
+class SpeakingPromptCreate(BaseModel):
+    part: str
+    title: str
+    cue_card: Optional[str] = None
+    questions: Optional[List[str]] = None
+    prep_time_sec: int = 60
+    speak_time_sec: int = 120
+    is_active: bool = True
+
+
+@router.get("/prompts/speaking")
+async def admin_list_speaking_prompts(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompts = db.query(SpeakingPrompt).order_by(SpeakingPrompt.id.desc()).all()
+    return {
+        "prompts": [
+            {
+                "id": p.id, "part": p.part, "title": p.title,
+                "cue_card": p.cue_card, "questions": p.questions or [],
+                "prep_time_sec": p.prep_time_sec, "speak_time_sec": p.speak_time_sec,
+                "is_active": p.is_active, "created_at": str(p.created_at),
+            }
+            for p in prompts
+        ]
+    }
+
+
+@router.post("/prompts/speaking", status_code=status.HTTP_201_CREATED)
+async def admin_create_speaking_prompt(
+    data: SpeakingPromptCreate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompt = SpeakingPrompt(**data.model_dump())
+    db.add(prompt)
+    db.commit()
+    db.refresh(prompt)
+    return {"id": prompt.id, "message": "Speaking prompt created"}
+
+
+@router.put("/prompts/speaking/{prompt_id}")
+async def admin_update_speaking_prompt(
+    prompt_id: int,
+    data: SpeakingPromptCreate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompt = db.query(SpeakingPrompt).filter(SpeakingPrompt.id == prompt_id).first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    for field, value in data.model_dump().items():
+        setattr(prompt, field, value)
+    db.commit()
+    return {"message": "Speaking prompt updated"}
+
+
+@router.delete("/prompts/speaking/{prompt_id}")
+async def admin_delete_speaking_prompt(
+    prompt_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompt = db.query(SpeakingPrompt).filter(SpeakingPrompt.id == prompt_id).first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    db.delete(prompt)
+    db.commit()
+    return {"message": "Speaking prompt deleted"}
+
+
+@router.post("/prompts/speaking/{prompt_id}/toggle")
+async def admin_toggle_speaking_prompt(
+    prompt_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    prompt = db.query(SpeakingPrompt).filter(SpeakingPrompt.id == prompt_id).first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    prompt.is_active = not prompt.is_active
+    db.commit()
+    return {"is_active": prompt.is_active}

@@ -85,11 +85,11 @@ export function useAchievements() {
     });
 }
 
-export function useLeaderboard(limit = 10) {
+export function useLeaderboard(limit = 20, offset = 0) {
     const { token } = useAuth();
     return useQuery({
-        queryKey: ['leaderboard', limit],
-        queryFn: () => api.getLeaderboard(token!, limit),
+        queryKey: ['leaderboard', limit, offset],
+        queryFn: () => api.getLeaderboard(token!, limit, offset),
         enabled: !!token,
     });
 }

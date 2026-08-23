@@ -10,10 +10,9 @@ import uuid
 from pathlib import Path
 
 from ..database import get_db
-from ..models import User, Question, Skill, Attempt, MistakeReview
+from ..models import User, Question, Skill
 from ..routers.auth import get_current_user
 from ..config import get_settings
-from ..services.scoring import answer_matches
 
 settings = get_settings()
 router = APIRouter(prefix="/listening", tags=["Listening"])
@@ -193,51 +192,28 @@ async def submit_listening_answer(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Submit answer for a listening question."""
-    question = db.query(Question).filter(
-        Question.id == submission.question_id,
-        Question.module == "LISTENING"
-    ).first()
-    
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found"
-        )
-    
-    # Check answer
-    is_correct = answer_matches(submission.user_answer, question.correct_answer)
-    
-    # Create attempt
-    attempt = Attempt(
-        user_id=current_user.id,
-        question_id=question.id,
+    """Submit answer for a listening question. Uses shared attempts service for XP, streak, mastery."""
+    from app.schemas import AttemptCreate
+    from app.services.attempts import submit_question_attempt
+
+    attempt_data = AttemptCreate(
+        question_id=submission.question_id,
         user_answer=submission.user_answer,
-        is_correct=is_correct,
         response_time_ms=submission.response_time_ms,
-        xp_earned=15 if is_correct else 0  # Base XP for listening
     )
-    db.add(attempt)
-    db.flush()
-    if not is_correct:
-        db.add(MistakeReview(
-            user_id=current_user.id,
-            question_id=question.id,
-            attempt_id=attempt.id,
-            module=question.module,
-            question_type=question.question_type,
-            user_answer=submission.user_answer,
-            correct_answer=question.correct_answer,
-            explanation=question.explanation,
-        ))
-    db.commit()
-    
+    result = submit_question_attempt(db, current_user, attempt_data)
+
     return {
-        "is_correct": is_correct,
-        "correct_answer": question.correct_answer,
-        "explanation": question.explanation,
-        "xp_earned": attempt.xp_earned,
-        "transcript_available": True  # Now user can access transcript
+        "is_correct": result.is_correct,
+        "correct_answer": result.correct_answer,
+        "explanation": result.explanation,
+        "xp_earned": result.xp_earned,
+        "new_xp": result.new_xp,
+        "new_level": result.new_level,
+        "level_up": result.level_up,
+        "new_streak": result.new_streak,
+        "mastery_change": result.mastery_change,
+        "transcript_available": True,
     }
 
 
