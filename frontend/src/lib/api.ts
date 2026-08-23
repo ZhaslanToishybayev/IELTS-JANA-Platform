@@ -190,6 +190,27 @@ export interface MockSessionResult {
     status: string;
 }
 
+export interface WritingPromptData {
+    id: number;
+    task_type: string;
+    title: string;
+    prompt_text: string;
+    category: string;
+    word_limit: number;
+    time_limit_minutes: number;
+    tips: string[];
+}
+
+export interface SpeakingPromptData {
+    id: number;
+    part: string;
+    title: string;
+    cue_card: string | null;
+    questions: string[];
+    prep_time_sec: number | null;
+    speak_time_sec: number;
+}
+
 export interface DiagnosticSubmitResult {
     id: number;
     question_id: number;
@@ -703,19 +724,19 @@ class ApiClient {
         });
     }
 
-    async submitMockWriting(token: string, sessionId: string, text: string) {
+    async submitMockWriting(token: string, sessionId: string, task1: string, task2: string) {
         return this.fetch<MockSessionResult>(`/mock/${sessionId}/writing`, {
             method: 'POST',
             token,
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ task1, task2 })
         });
     }
 
-    async submitMockSpeaking(token: string, sessionId: string, transcript: string) {
+    async submitMockSpeaking(token: string, sessionId: string, part1: string, part2: string, part3: string) {
         return this.fetch<MockSessionResult>(`/mock/${sessionId}/speaking`, {
             method: 'POST',
             token,
-            body: JSON.stringify({ transcript })
+            body: JSON.stringify({ part1, part2, part3 })
         });
     }
 
@@ -738,29 +759,20 @@ class ApiClient {
 
     async getMockWritingPrompt(token: string, taskType?: string) {
         const params = taskType ? `?task_type=${taskType}` : '';
-        return this.fetch<{
-            id: number;
-            task_type: string;
-            title: string;
-            prompt_text: string;
-            category: string;
-            word_limit: number;
-            time_limit_minutes: number;
-            tips: string[];
-        }>(`/mock/prompts/writing${params}`, { token });
+        return this.fetch<WritingPromptData>(`/mock/prompts/writing${params}`, { token });
+    }
+
+    async getMockWritingPromptsAll(token: string) {
+        return this.fetch<{ task1: WritingPromptData | null; task2: WritingPromptData | null }>('/mock/prompts/writing/all', { token });
     }
 
     async getMockSpeakingPrompt(token: string, part?: string) {
         const params = part ? `?part=${part}` : '';
-        return this.fetch<{
-            id: number;
-            part: string;
-            title: string;
-            cue_card: string | null;
-            questions: string[];
-            prep_time_sec: number | null;
-            speak_time_sec: number;
-        }>(`/mock/prompts/speaking${params}`, { token });
+        return this.fetch<SpeakingPromptData>(`/mock/prompts/speaking${params}`, { token });
+    }
+
+    async getMockSpeakingPromptsAll(token: string) {
+        return this.fetch<{ part1: SpeakingPromptData | null; part2: SpeakingPromptData | null; part3: SpeakingPromptData | null }>('/mock/prompts/speaking/all', { token });
     }
 
     // ============ Achievements ============

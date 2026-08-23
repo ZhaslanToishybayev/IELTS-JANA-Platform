@@ -151,30 +151,75 @@ class MockExamService:
         db.refresh(session)
         return session
 
-    def submit_writing(self, db: Session, session: MockTestSession, essay_text: str):
+    def submit_writing(self, db: Session, session: MockTestSession, task1_text: str = "", task2_text: str = ""):
         if (session.scores or {}).get("writing") is not None:
             return session
+
         current_answers = dict(session.answers or {})
-        current_answers["writing"] = essay_text
+        if task1_text:
+            current_answers["writing_task1"] = task1_text
+        if task2_text:
+            current_answers["writing_task2"] = task2_text
         session.answers = current_answers
         flag_modified(session, "answers")
 
         from app.services.writing_service import evaluate_essay_locally, _valid_writing_result
 
-        result = _valid_writing_result(evaluate_essay_locally(essay_text, "Task 2", ""))
-        score = result.get("band_score", 5.0) if result else 5.0
+        combined_text = ""
+        task_scores = {}
+        all_feedback = {}
 
-        word_count = len([w for w in essay_text.split() if w.strip()])
+        if task1_text:
+            t1_result = _valid_writing_result(evaluate_essay_locally(task1_text, "Task 1", ""))
+            t1_score = t1_result.get("band_score", 5.0) if t1_result else 5.0
+            t1_words = len([w for w in task1_text.split() if w.strip()])
+            task_scores["task1"] = t1_score
+            all_feedback["task1"] = {
+                "words": t1_words,
+                "score": t1_score,
+                "feedback": t1_result.get("overall_feedback", "") if t1_result else "",
+                "criteria": {
+                    k: {"score": v.get("score", 0), "comment": v.get("comment", "")}
+                    for k, v in (t1_result or {}).items()
+                    if isinstance(v, dict)
+                },
+            }
+            combined_text += task1_text
+
+        if task2_text:
+            t2_result = _valid_writing_result(evaluate_essay_locally(task2_text, "Task 2", ""))
+            t2_score = t2_result.get("band_score", 5.0) if t2_result else 5.0
+            t2_words = len([w for w in task2_text.split() if w.strip()])
+            task_scores["task2"] = t2_score
+            all_feedback["task2"] = {
+                "words": t2_words,
+                "score": t2_score,
+                "feedback": t2_result.get("overall_feedback", "") if t2_result else "",
+                "criteria": {
+                    k: {"score": v.get("score", 0), "comment": v.get("comment", "")}
+                    for k, v in (t2_result or {}).items()
+                    if isinstance(v, dict)
+                },
+            }
+            if combined_text:
+                combined_text += "\n\n"
+            combined_text += task2_text
+
+        if not task_scores:
+            combined_text = ""
+            overall_writing = 5.0
+        elif len(task_scores) == 2:
+            overall_writing = round((task_scores["task1"] + task_scores["task2"]) * 2 / 2) / 2
+        else:
+            overall_writing = list(task_scores.values())[0]
+
         current_scores = dict(session.scores or {})
-        current_scores["writing"] = score
+        current_scores["writing"] = overall_writing
         current_scores["writing_raw"] = {
-            "words": word_count,
-            "feedback": result.get("overall_feedback", "") if result else "",
-            "criteria": {
-                k: {"score": v.get("score", 0), "comment": v.get("comment", "")}
-                for k, v in result.items()
-                if isinstance(v, dict)
-            } if result else {},
+            "total_words": len([w for w in combined_text.split() if w.strip]),
+            "tasks": all_feedback,
+            "task1_words": all_feedback.get("task1", {}).get("words", 0),
+            "task2_words": all_feedback.get("task2", {}).get("words", 0),
         }
         session.scores = current_scores
         flag_modified(session, "scores")
@@ -183,39 +228,48 @@ class MockExamService:
         db.refresh(session)
         return session
 
-    def submit_speaking(self, db: Session, session: MockTestSession, transcript: str):
+    def submit_speaking(self, db: Session, session: MockTestSession, part1: str = "", part2: str = "", part3: str = ""):
         if (session.scores or {}).get("speaking") is not None:
             return session
+
         current_answers = dict(session.answers or {})
-        current_answers["speaking"] = transcript
+        if part1:
+            current_answers["speaking_part1"] = part1
+        if part2:
+            current_answers["speaking_part2"] = part2
+        if part3:
+            current_answers["speaking_part3"] = part3
         session.answers = current_answers
         flag_modified(session, "answers")
 
-        word_count = len([w for w in transcript.split() if w.strip()])
-        sentences = [s.strip() for s in transcript.replace("?", ".").replace("!", ".").split(".") if s.strip()]
-        unique_words = len({w.lower().strip(".,;:!?") for w in transcript.split()})
+        def _score_text(text: str) -> dict:
+            wc = len([w for w in text.split() if w.strip()])
+            sentences = [s.strip() for s in text.replace("?", ".").replace("!", ".").split(".") if s.strip()]
+            unique = len({w.lower().strip(".,;:!?") for w in text.split()})
+            length_score = 6.5 if wc >= 180 else 6.0 if wc >= 120 else 5.0 if wc >= 70 else 4.0
+            variety_score = 6.5 if unique / max(wc, 1) >= 0.6 else 6.0 if unique / max(wc, 1) >= 0.45 else 5.0
+            coherence_score = 6.5 if len(sentences) >= 8 else 6.0 if len(sentences) >= 5 else 5.0 if len(sentences) >= 3 else 4.0
+            band = round((length_score + variety_score + coherence_score) * 2 / 3) / 2
+            return {"words": wc, "sentences": len(sentences), "unique_words": unique, "band": band}
 
-        # More nuanced scoring based on multiple factors
-        length_score = 6.5 if word_count >= 180 else 6.0 if word_count >= 120 else 5.0 if word_count >= 70 else 4.0
-        variety_score = 6.5 if unique_words / max(word_count, 1) >= 0.6 else 6.0 if unique_words / max(word_count, 1) >= 0.45 else 5.0
-        coherence_score = 6.5 if len(sentences) >= 8 else 6.0 if len(sentences) >= 5 else 5.0 if len(sentences) >= 3 else 4.0
-        band = round((length_score + variety_score + coherence_score) * 2 / 3) / 2
+        part_results = {}
+        for label, text in [("part1", part1), ("part2", part2), ("part3", part3)]:
+            if text.strip():
+                part_results[label] = _score_text(text)
 
-        feedback = {
-            "fluency_coherence": {"score": coherence_score, "comment": f"{len(sentences)} sentences, {word_count} words spoken."},
-            "lexical_resource": {"score": variety_score, "comment": f"{unique_words} unique words out of {word_count} total."},
-            "grammatical_range": {"score": length_score, "comment": "Score estimated from response length and structure."},
-            "pronunciation": {"score": band, "comment": "Audio analysis required for precise pronunciation scoring."},
-            "overall_feedback": f"Speaking response: {word_count} words, {len(sentences)} sentences, estimated band {band}. For full AI audio analysis, use the dedicated speaking practice.",
-        }
+        if not part_results:
+            overall_speaking = 5.0
+        elif len(part_results) == 3:
+            overall_speaking = round(sum(p["band"] for p in part_results.values()) / 3 * 2) / 2
+        else:
+            overall_speaking = round(sum(p["band"] for p in part_results.values()) / len(part_results) * 2) / 2
 
         current_scores = dict(session.scores or {})
-        current_scores["speaking"] = band
+        current_scores["speaking"] = overall_speaking
         current_scores["speaking_raw"] = {
-            "words": word_count,
-            "sentences": len(sentences),
-            "unique_words": unique_words,
-            "feedback": feedback,
+            "parts": part_results,
+            "total_words": sum(p["words"] for p in part_results.values()),
+            "total_sentences": sum(p["sentences"] for p in part_results.values()),
         }
         current_scores["overall"] = overall_band([
             current_scores.get("listening", 0),

@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import type { MockSessionResult, WritingPromptData, SpeakingPromptData } from '@/lib/api';
 import {
     Headphones,
     BookOpen,
     PenTool,
     Mic,
-    MicOff,
     Clock,
     CheckCircle2,
     ChevronRight,
@@ -20,11 +20,11 @@ import {
     AlertCircle,
     FileText,
     Square,
-    RotateCcw,
     Volume2,
+    ChevronDown,
+    ChevronUp,
 } from 'lucide-react';
 import { formatTime } from '@/lib/utils';
-import type { MockSessionResult } from '@/lib/api';
 
 type Section = 'LISTENING' | 'READING' | 'WRITING' | 'SPEAKING';
 type Phase = 'LANDING' | 'PREP' | 'TEST' | 'REVIEW' | 'RESULTS';
@@ -43,8 +43,8 @@ interface SectionConfig {
 const SECTIONS: SectionConfig[] = [
     { id: 'LISTENING', title: 'Listening', icon: Headphones, duration: 30 * 60, description: '4 sections, 40 questions. Audio played once only.', bgLight: 'bg-blue-50', bgDark: 'dark:bg-blue-900/20', text: 'text-blue-600' },
     { id: 'READING', title: 'Reading', icon: BookOpen, duration: 60 * 60, description: '3 passages, 40 questions. No extra time for transfer.', bgLight: 'bg-purple-50', bgDark: 'dark:bg-purple-900/20', text: 'text-purple-600' },
-    { id: 'WRITING', title: 'Writing', icon: PenTool, duration: 60 * 60, description: 'Task 1 (20 min) + Task 2 (40 min). Min 150/250 words.', bgLight: 'bg-amber-50', bgDark: 'dark:bg-amber-900/20', text: 'text-amber-600' },
-    { id: 'SPEAKING', title: 'Speaking', icon: Mic, duration: 14 * 60, description: 'Part 1 (4-5 min) + Part 2 (3-4 min) + Part 3 (4-5 min).', bgLight: 'bg-rose-50', bgDark: 'dark:bg-rose-900/20', text: 'text-rose-600' },
+    { id: 'WRITING', title: 'Writing', icon: PenTool, duration: 60 * 60, description: 'Task 1 (150+ words, 20 min) + Task 2 (250+ words, 40 min).', bgLight: 'bg-amber-50', bgDark: 'dark:bg-amber-900/20', text: 'text-amber-600' },
+    { id: 'SPEAKING', title: 'Speaking', icon: Mic, duration: 14 * 60, description: 'Part 1 (general) + Part 2 (cue card) + Part 3 (discussion).', bgLight: 'bg-rose-50', bgDark: 'dark:bg-rose-900/20', text: 'text-rose-600' },
 ];
 
 interface MockTestProps {
@@ -65,8 +65,8 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
     const [allResults, setAllResults] = useState<Record<string, MockSessionResult>>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [writingPrompt, setWritingPrompt] = useState<any>(null);
-    const [speakingPrompt, setSpeakingPrompt] = useState<any>(null);
+    const [writingPrompts, setWritingPrompts] = useState<{ task1: WritingPromptData | null; task2: WritingPromptData | null } | null>(null);
+    const [speakingPrompts, setSpeakingPrompts] = useState<{ part1: SpeakingPromptData | null; part2: SpeakingPromptData | null; part3: SpeakingPromptData | null } | null>(null);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
@@ -94,15 +94,15 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
             }
 
             if (section === 'WRITING') {
-                const prompt = await api.getMockWritingPrompt(token);
-                setWritingPrompt(prompt);
-                setQuestions([{ id: 'essay', text: prompt.prompt_text, type: 'ESSAY', options: null, passage: null, passage_title: prompt.title, audio_url: null, section: null }]);
+                const prompts = await api.getMockWritingPromptsAll(token);
+                setWritingPrompts(prompts);
+                setQuestions([]);
             } else if (section === 'SPEAKING') {
-                const prompt = await api.getMockSpeakingPrompt(token);
-                setSpeakingPrompt(prompt);
-                setQuestions([{ id: 'speech', text: prompt.cue_card || prompt.questions?.[0] || 'Speak about the topic', type: 'SPEECH', options: null, passage: null, passage_title: prompt.title, audio_url: null, section: null }]);
+                const prompts = await api.getMockSpeakingPromptsAll(token);
+                setSpeakingPrompts(prompts);
+                setQuestions([]);
             } else {
-                const data = await api.getMockQuestions(token, section, section === 'LISTENING' ? 40 : 40, sessionId || undefined);
+                const data = await api.getMockQuestions(token, section, 40, sessionId || undefined);
                 setQuestions(data.questions || []);
             }
 
@@ -141,11 +141,9 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
                 Object.entries(answers).forEach(([qid, ans]) => { answerDict[`q_${qid}`] = ans; });
                 res = await api.submitMockReading(token, sessionId, answerDict);
             } else if (activeSection === 'WRITING') {
-                const essayText = answers['essay'] || '';
-                res = await api.submitMockWriting(token, sessionId, essayText);
+                res = await api.submitMockWriting(token, sessionId, answers['task1'] || '', answers['task2'] || '');
             } else if (activeSection === 'SPEAKING') {
-                const transcript = answers['speech'] || '';
-                res = await api.submitMockSpeaking(token, sessionId, transcript);
+                res = await api.submitMockSpeaking(token, sessionId, answers['part1'] || '', answers['part2'] || '', answers['part3'] || '');
             }
             if (res) {
                 setResult(res);
@@ -165,8 +163,8 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
         setResult(null);
         setQuestions([]);
         setAnswers({});
-        setWritingPrompt(null);
-        setSpeakingPrompt(null);
+        setWritingPrompts(null);
+        setSpeakingPrompts(null);
     };
 
     const goToNextSection = () => {
@@ -254,7 +252,7 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
 
                 {phase === 'PREP' && activeSection && (
                     <motion.div key="prep" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-                        <PrepScreen section={activeSection} onStart={beginTest} onBack={goToLanding} writingPrompt={writingPrompt} speakingPrompt={speakingPrompt} />
+                        <PrepScreen section={activeSection} onStart={beginTest} onBack={goToLanding} writingPrompts={writingPrompts} speakingPrompts={speakingPrompts} />
                     </motion.div>
                 )}
 
@@ -262,9 +260,9 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
                     <motion.div key="test" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                         {activeSection === 'WRITING' ? (
                             <WritingTestScreen
-                                prompt={writingPrompt}
-                                essay={answers['essay'] || ''}
-                                setEssay={(text) => setAnswer('essay', text)}
+                                prompts={writingPrompts}
+                                answers={answers}
+                                setAnswer={setAnswer}
                                 timeLeft={timeLeft}
                                 isPaused={isPaused}
                                 setIsPaused={setIsPaused}
@@ -274,9 +272,9 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
                             />
                         ) : activeSection === 'SPEAKING' ? (
                             <SpeakingTestScreen
-                                prompt={speakingPrompt}
-                                transcript={answers['speech'] || ''}
-                                setTranscript={(text) => setAnswer('speech', text)}
+                                prompts={speakingPrompts}
+                                answers={answers}
+                                setAnswer={setAnswer}
                                 timeLeft={timeLeft}
                                 isPaused={isPaused}
                                 setIsPaused={setIsPaused}
@@ -318,9 +316,10 @@ export default function MockTestPage({ standalone = true, initialSection }: Mock
 }
 
 // ========== PREP SCREEN ==========
-function PrepScreen({ section, onStart, onBack, writingPrompt, speakingPrompt }: {
+function PrepScreen({ section, onStart, onBack, writingPrompts, speakingPrompts }: {
     section: Section; onStart: () => void; onBack: () => void;
-    writingPrompt?: any; speakingPrompt?: any;
+    writingPrompts?: { task1: WritingPromptData | null; task2: WritingPromptData | null } | null;
+    speakingPrompts?: { part1: SpeakingPromptData | null; part2: SpeakingPromptData | null; part3: SpeakingPromptData | null } | null;
 }) {
     const config = SECTIONS.find(s => s.id === section)!;
     const Icon = config.icon;
@@ -329,8 +328,8 @@ function PrepScreen({ section, onStart, onBack, writingPrompt, speakingPrompt }:
         LISTENING: [
             'The audio will be played only once.',
             'Write your answers while listening.',
-            'Transfer answers to the answer sheet before time runs out.',
-            'You will hear a variety of accents (British, Australian, American).',
+            'Transfer answers before time runs out.',
+            'You will hear a variety of accents.',
         ],
         READING: [
             'Read each passage carefully before answering.',
@@ -339,16 +338,16 @@ function PrepScreen({ section, onStart, onBack, writingPrompt, speakingPrompt }:
             'Answer ALL questions — no penalty for wrong answers.',
         ],
         WRITING: [
-            'Read the prompt carefully before writing.',
-            'Write at least the required number of words.',
-            'Organize your essay into clear paragraphs.',
+            'Task 1: Describe a chart/graph/process (min 150 words, 20 min).',
+            'Task 2: Write an essay (min 250 words, 40 min).',
+            'Plan before writing. Organize into paragraphs.',
             'Spend a few minutes reviewing your work.',
         ],
         SPEAKING: [
-            'Listen to the questions carefully.',
-            'Speak clearly and extend your answers.',
-            'For Part 2, use the preparation time wisely.',
-            'Give examples to support your points.',
+            'Part 1: General questions about yourself.',
+            'Part 2: Long turn — speak on a cue card topic.',
+            'Part 3: Abstract discussion related to Part 2.',
+            'Speak clearly and extend your answers with examples.',
         ],
     };
 
@@ -369,54 +368,63 @@ function PrepScreen({ section, onStart, onBack, writingPrompt, speakingPrompt }:
                 </div>
             </div>
 
-            {section === 'WRITING' && writingPrompt && (
-                <div className="card p-6 mb-6">
-                    <div className="flex items-center gap-2 mb-3">
-                        <FileText className="w-5 h-5 text-amber-500" />
-                        <span className="font-black text-slate-900 dark:text-white">Your Writing Prompt</span>
-                    </div>
-                    <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-2">{writingPrompt.title}</h3>
-                    <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed whitespace-pre-wrap">{writingPrompt.prompt_text}</p>
-                    <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
-                        <span className="font-bold">Min {writingPrompt.word_limit} words</span>
-                        <span className="font-bold">{writingPrompt.time_limit_minutes} min</span>
-                        {writingPrompt.category && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{writingPrompt.category}</span>}
-                    </div>
+            {section === 'WRITING' && writingPrompts && (
+                <div className="space-y-4 mb-6">
+                    {writingPrompts.task1 && (
+                        <PromptCard
+                            icon={<PenTool className="w-4 h-4 text-amber-500" />}
+                            label={`Task 1 — ${writingPrompts.task1.title}`}
+                            sublabel={`${writingPrompts.task1.word_limit}+ words · ${writingPrompts.task1.time_limit_minutes} min`}
+                            text={writingPrompts.task1.prompt_text}
+                            tips={writingPrompts.task1.tips}
+                        />
+                    )}
+                    {writingPrompts.task2 && (
+                        <PromptCard
+                            icon={<PenTool className="w-4 h-4 text-amber-500" />}
+                            label={`Task 2 — ${writingPrompts.task2.title}`}
+                            sublabel={`${writingPrompts.task2.word_limit}+ words · ${writingPrompts.task2.time_limit_minutes} min`}
+                            text={writingPrompts.task2.prompt_text}
+                            tips={writingPrompts.task2.tips}
+                        />
+                    )}
                 </div>
             )}
 
-            {section === 'SPEAKING' && speakingPrompt && (
-                <div className="card p-6 mb-6">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Mic className="w-5 h-5 text-rose-500" />
-                        <span className="font-black text-slate-900 dark:text-white">Your Speaking Topic</span>
-                    </div>
-                    <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-2">{speakPrompt(speakingPrompt)}</h3>
-                    {speakingPrompt.cue_card && (
-                        <div className="mt-3 p-4 bg-rose-50 dark:bg-rose-900/10 rounded-xl border border-rose-200 dark:border-rose-800">
-                            <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{speakingPrompt.cue_card}</p>
-                        </div>
+            {section === 'SPEAKING' && speakingPrompts && (
+                <div className="space-y-4 mb-6">
+                    {speakingPrompts.part1 && (
+                        <PromptCard
+                            icon={<Mic className="w-4 h-4 text-rose-500" />}
+                            label={`Part 1 — ${speakingPrompts.part1.title}`}
+                            sublabel="General questions"
+                            questions={speakingPrompts.part1.questions}
+                        />
                     )}
-                    {speakingPrompt.questions?.length > 0 && (
-                        <div className="mt-3 space-y-2">
-                            {speakingPrompt.questions.map((q: string, i: number) => (
-                                <div key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
-                                    <span className="font-black text-rose-500 shrink-0">Q{i + 1}.</span> {q}
-                                </div>
-                            ))}
-                        </div>
+                    {speakingPrompts.part2 && (
+                        <PromptCard
+                            icon={<Mic className="w-4 h-4 text-rose-500" />}
+                            label={`Part 2 — ${speakingPrompts.part2.title}`}
+                            sublabel="Long turn · cue card"
+                            text={speakingPrompts.part2.cue_card || undefined}
+                            questions={speakingPrompts.part2.questions}
+                        />
                     )}
-                    <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
-                        <span className="font-bold">Part: {speakPartLabel(speakingPrompt.part)}</span>
-                        {speakingPrompt.speak_time_sec && <span className="font-bold">{speakingPrompt.speak_time_sec}s speaking time</span>}
-                    </div>
+                    {speakingPrompts.part3 && (
+                        <PromptCard
+                            icon={<Mic className="w-4 h-4 text-rose-500" />}
+                            label={`Part 3 — ${speakingPrompts.part3.title}`}
+                            sublabel="Discussion"
+                            questions={speakingPrompts.part3.questions}
+                        />
+                    )}
                 </div>
             )}
 
             <div className="card p-8 mb-8">
                 <h3 className="font-black text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                     <AlertCircle className="w-5 h-5 text-amber-500" />
-                    Important Instructions
+                    Instructions
                 </h3>
                 <ul className="space-y-3">
                     {instructions[section].map((inst, i) => (
@@ -436,14 +444,50 @@ function PrepScreen({ section, onStart, onBack, writingPrompt, speakingPrompt }:
     );
 }
 
-function speakPrompt(p: any): string {
-    if (p.title) return p.title;
-    if (p.part) return `Part ${p.part.replace('PART_', '')}`;
-    return 'Speaking Task';
-}
-
-function speakPartLabel(part: string): string {
-    return part.replace('PART_', '').replace('_', ' ');
+function PromptCard({ icon, label, sublabel, text, tips, questions }: {
+    icon: React.ReactNode;
+    label: string;
+    sublabel: string;
+    text?: string;
+    tips?: string[];
+    questions?: string[];
+}) {
+    const [expanded, setExpanded] = useState(true);
+    return (
+        <div className="card overflow-hidden">
+            <button onClick={() => setExpanded(!expanded)} className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                <div className="flex items-center gap-3">
+                    {icon}
+                    <div>
+                        <span className="font-black text-slate-900 dark:text-white text-sm">{label}</span>
+                        <p className="text-xs text-slate-500">{sublabel}</p>
+                    </div>
+                </div>
+                {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </button>
+            {expanded && (
+                <div className="px-4 pb-4 border-t border-slate-100 dark:border-slate-800">
+                    {text && <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap mt-3">{text}</p>}
+                    {questions && questions.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                            {questions.map((q, i) => (
+                                <div key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                                    <span className="font-black text-rose-500 shrink-0">Q{i + 1}.</span> {q}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {tips && tips.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {tips.map((tip, i) => (
+                                <span key={i} className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 px-2 py-1 rounded-lg">{tip}</span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
 
 // ========== TEST SCREEN (Listening/Reading) ==========
@@ -462,7 +506,6 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
     const config = SECTIONS.find(s => s.id === section)!;
     const answeredCount = Object.keys(answers).length;
     const pct = Math.round((answeredCount / Math.max(questions.length, 1)) * 100);
-
     const groupedQuestions = section === 'READING' ? groupByPassage(questions) : null;
 
     return (
@@ -470,7 +513,7 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
             <div className="card p-4 mb-4 flex items-center justify-between sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
                 <div className="flex items-center gap-4">
                     <h3 className="font-black text-slate-900 dark:text-white">{config.title}</h3>
-                    <span className="text-sm text-slate-500 font-bold">{answeredCount}/{questions.length} answered</span>
+                    <span className="text-sm text-slate-500 font-bold">{answeredCount}/{questions.length}</span>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className={`flex items-center gap-2 font-mono text-lg font-black ${timeLeft < 300 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
@@ -501,57 +544,35 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                                 </div>
                             )}
                             {group.questions.map((q: any, idx: number) => (
-                                <QuestionCard
-                                    key={q.id}
-                                    question={q}
-                                    index={group.offset + idx}
-                                    answer={answers[q.id] || ''}
-                                    onAnswer={(ans) => setAnswer(q.id, ans)}
-                                    section={section}
-                                />
+                                <QuestionCard key={q.id} question={q} index={group.offset + idx} answer={answers[q.id] || ''} onAnswer={(ans) => setAnswer(q.id, ans)} section={section} />
                             ))}
                         </div>
                     ))
                 ) : (
                     questions.map((q, idx) => (
-                        <QuestionCard
-                            key={q.id}
-                            question={q}
-                            index={idx}
-                            answer={answers[q.id] || ''}
-                            onAnswer={(ans) => setAnswer(q.id, ans)}
-                            section={section}
-                        />
+                        <QuestionCard key={q.id} question={q} index={idx} answer={answers[q.id] || ''} onAnswer={(ans) => setAnswer(q.id, ans)} section={section} />
                     ))
                 )}
             </div>
 
             <div className="card p-4 mt-4 flex items-center justify-between">
                 <span className="text-sm text-slate-500 font-bold">
-                    {answeredCount < questions.length
-                        ? `${questions.length - answeredCount} questions remaining`
-                        : 'All questions answered'}
+                    {answeredCount < questions.length ? `${questions.length - answeredCount} remaining` : 'All answered'}
                 </span>
-                <button
-                    onClick={onSubmit}
-                    disabled={loading || answeredCount === 0}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20"
-                >
-                    {loading ? 'Submitting...' : 'Submit Section'}
+                <button onClick={onSubmit} disabled={loading || answeredCount === 0} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20">
+                    {loading ? 'Submitting...' : 'Submit'}
                 </button>
             </div>
-
             {error && <div className="card p-4 mt-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 text-sm">{error}</div>}
         </div>
     );
 }
 
-function groupByPassage(questions: any[]): { passage: string | null; passage_title: string | null; questions: any[]; offset: number }[] {
+function groupByPassage(questions: any[]) {
     const groups: { passage: string | null; passage_title: string | null; questions: any[]; offset: number }[] = [];
     let current: any = null;
     let offset = 0;
     for (const q of questions) {
-        const key = q.passage || '__none__';
         if (!current || current.passage !== (q.passage || null)) {
             current = { passage: q.passage || null, passage_title: q.passage_title || null, questions: [], offset };
             groups.push(current);
@@ -564,11 +585,7 @@ function groupByPassage(questions: any[]): { passage: string | null; passage_tit
 
 // ========== QUESTION CARD ==========
 function QuestionCard({ question, index, answer, onAnswer, section }: {
-    question: any;
-    index: number;
-    answer: string;
-    onAnswer: (answer: string) => void;
-    section: Section;
+    question: any; index: number; answer: string; onAnswer: (answer: string) => void; section: Section;
 }) {
     const options: string[] = question.options || [];
     const isTFNG = question.type === 'TF_NG';
@@ -578,9 +595,7 @@ function QuestionCard({ question, index, answer, onAnswer, section }: {
     return (
         <div className="card p-6">
             <div className="flex items-start gap-3 mb-4">
-                <span className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-sm font-black text-blue-600 shrink-0">
-                    {index + 1}
-                </span>
+                <span className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-sm font-black text-blue-600 shrink-0">{index + 1}</span>
                 <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{question.type?.replace(/_/g, ' ')}</span>
@@ -589,86 +604,72 @@ function QuestionCard({ question, index, answer, onAnswer, section }: {
                     <p className="text-slate-900 dark:text-white font-medium leading-relaxed">{question.text}</p>
                 </div>
             </div>
-
             {isMCQ && !isTFNG && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 ml-11">
                     {options.map((opt: string, i: number) => {
                         const letter = String.fromCharCode(65 + i);
                         const isSelected = answer === letter || answer === opt;
                         return (
-                            <button
-                                key={i}
-                                onClick={() => onAnswer(letter)}
-                                className={`text-left p-4 rounded-xl border-2 transition font-medium text-sm ${
-                                    isSelected
-                                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-                                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'
-                                }`}
-                            >
+                            <button key={i} onClick={() => onAnswer(letter)} className={`text-left p-4 rounded-xl border-2 transition font-medium text-sm ${isSelected ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'}`}>
                                 <span className="font-black mr-2">{letter}.</span> {opt}
                             </button>
                         );
                     })}
                 </div>
             )}
-
             {isTFNG && (
                 <div className="flex gap-3 ml-11">
                     {['TRUE', 'FALSE', 'NOT GIVEN'].map((opt) => (
-                        <button
-                            key={opt}
-                            onClick={() => onAnswer(opt)}
-                            className={`px-6 py-3 rounded-xl border-2 transition font-black text-sm ${
-                                answer === opt
-                                    ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-                                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'
-                            }`}
-                        >
+                        <button key={opt} onClick={() => onAnswer(opt)} className={`px-6 py-3 rounded-xl border-2 transition font-black text-sm ${answer === opt ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'}`}>
                             {opt}
                         </button>
                     ))}
                 </div>
             )}
-
             {!isMCQ && !isTFNG && (
                 <div className="ml-11">
-                    <input
-                        type="text"
-                        value={answer}
-                        onChange={(e) => onAnswer(e.target.value)}
-                        placeholder="Type your answer..."
-                        className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition"
-                    />
+                    <input type="text" value={answer} onChange={(e) => onAnswer(e.target.value)} placeholder="Type your answer..." className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition" />
                 </div>
             )}
         </div>
     );
 }
 
-// ========== WRITING TEST SCREEN ==========
-function WritingTestScreen({ prompt, essay, setEssay, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
-    prompt: any;
-    essay: string;
-    setEssay: (text: string) => void;
-    timeLeft: number;
-    isPaused: boolean;
-    setIsPaused: (paused: boolean) => void;
-    onSubmit: () => void;
-    loading: boolean;
-    error: string | null;
+// ========== WRITING TEST SCREEN (Multi-task) ==========
+function WritingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
+    prompts: { task1: WritingPromptData | null; task2: WritingPromptData | null } | null;
+    answers: Record<number | string, string>;
+    setAnswer: (id: number | string, answer: string) => void;
+    timeLeft: number; isPaused: boolean; setIsPaused: (p: boolean) => void;
+    onSubmit: () => void; loading: boolean; error: string | null;
 }) {
-    const wordCount = essay.trim() ? essay.trim().split(/\s+/).length : 0;
-    const minWords = prompt?.word_limit || 250;
-    const hasEnoughWords = wordCount >= minWords;
+    const [activeTask, setActiveTask] = useState<'task1' | 'task2'>('task1');
+    const task1Text = answers['task1'] || '';
+    const task2Text = answers['task2'] || '';
+    const currentText = activeTask === 'task1' ? task1Text : task2Text;
+    const setCurrentText = (t: string) => setAnswer(activeTask, t);
+
+    const wordCount = (t: string) => t.trim() ? t.trim().split(/\s+/).length : 0;
+    const t1Words = wordCount(task1Text);
+    const t2Words = wordCount(task2Text);
+    const currentWords = activeTask === 'task1' ? t1Words : t2Words;
+    const currentPrompt = activeTask === 'task1' ? prompts?.task1 : prompts?.task2;
+    const minWords = currentPrompt?.word_limit || (activeTask === 'task1' ? 150 : 250);
+    const hasEnough = currentWords >= minWords;
 
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)]">
             <div className="card p-4 mb-4 flex items-center justify-between sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
                 <div className="flex items-center gap-4">
                     <h3 className="font-black text-slate-900 dark:text-white">Writing</h3>
-                    <span className={`text-sm font-bold ${hasEnoughWords ? 'text-emerald-600' : 'text-amber-600'}`}>
-                        {wordCount}/{minWords} words
-                    </span>
+                    <div className="flex items-center gap-2 text-sm font-bold">
+                        <button onClick={() => setActiveTask('task1')} className={`px-3 py-1 rounded-lg transition ${activeTask === 'task1' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+                            Task 1 <span className="ml-1 text-xs">({t1Words}w)</span>
+                        </button>
+                        <button onClick={() => setActiveTask('task2')} className={`px-3 py-1 rounded-lg transition ${activeTask === 'task2' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+                            Task 2 <span className="ml-1 text-xs">({t2Words}w)</span>
+                        </button>
+                    </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className={`flex items-center gap-2 font-mono text-lg font-black ${timeLeft < 300 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
@@ -681,72 +682,69 @@ function WritingTestScreen({ prompt, essay, setEssay, timeLeft, isPaused, setIsP
                 </div>
             </div>
 
-            {prompt && (
+            {currentPrompt && (
                 <div className="card p-5 mb-4">
                     <div className="flex items-center gap-2 mb-2">
                         <PenTool className="w-4 h-4 text-amber-500" />
-                        <span className="font-black text-slate-900 dark:text-white text-sm">{prompt.title}</span>
+                        <span className="font-black text-slate-900 dark:text-white text-sm">{currentPrompt.title}</span>
                     </div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap">{prompt.prompt_text}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap">{currentPrompt.prompt_text}</p>
                 </div>
             )}
 
             <div className="flex-1 overflow-y-auto">
                 <textarea
-                    value={essay}
-                    onChange={(e) => setEssay(e.target.value)}
-                    placeholder="Write your essay here..."
-                    className="w-full h-full min-h-[300px] bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-4 text-slate-900 dark:text-white text-base leading-relaxed focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition resize-none"
+                    value={currentText}
+                    onChange={(e) => setCurrentText(e.target.value)}
+                    placeholder={`Write your ${activeTask === 'task1' ? 'Task 1 response' : 'essay'} here...`}
+                    className="w-full h-full min-h-[250px] bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-4 text-slate-900 dark:text-white text-base leading-relaxed focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition resize-none"
                 />
             </div>
 
             <div className="card p-4 mt-4 flex items-center justify-between">
                 <div className="flex items-center gap-4 text-sm">
-                    <span className={`font-bold ${hasEnoughWords ? 'text-emerald-600' : 'text-amber-600'}`}>
-                        {wordCount} words
+                    <span className={`font-bold ${hasEnough ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {currentWords}/{minWords} words
                     </span>
-                    {!hasEnoughWords && (
-                        <span className="text-amber-500">Need {minWords - wordCount} more words</span>
-                    )}
+                    {!hasEnough && <span className="text-amber-500">Need {minWords - currentWords} more</span>}
                 </div>
-                <button
-                    onClick={onSubmit}
-                    disabled={loading || wordCount === 0}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20"
-                >
-                    {loading ? 'Submitting...' : 'Submit Essay'}
+                <button onClick={onSubmit} disabled={loading || (t1Words === 0 && t2Words === 0)} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20">
+                    {loading ? 'Submitting...' : 'Submit Writing'}
                 </button>
             </div>
-
             {error && <div className="card p-4 mt-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 text-sm">{error}</div>}
         </div>
     );
 }
 
-// ========== SPEAKING TEST SCREEN ==========
-function SpeakingTestScreen({ prompt, transcript, setTranscript, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
-    prompt: any;
-    transcript: string;
-    setTranscript: (text: string) => void;
-    timeLeft: number;
-    isPaused: boolean;
-    setIsPaused: (paused: boolean) => void;
-    onSubmit: () => void;
-    loading: boolean;
-    error: string | null;
+// ========== SPEAKING TEST SCREEN (Multi-part) ==========
+function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
+    prompts: { part1: SpeakingPromptData | null; part2: SpeakingPromptData | null; part3: SpeakingPromptData | null } | null;
+    answers: Record<number | string, string>;
+    setAnswer: (id: number | string, answer: string) => void;
+    timeLeft: number; isPaused: boolean; setIsPaused: (p: boolean) => void;
+    onSubmit: () => void; loading: boolean; error: string | null;
 }) {
+    const [activePart, setActivePart] = useState<'part1' | 'part2' | 'part3'>('part1');
     const [isRecording, setIsRecording] = useState(false);
     const [audioURL, setAudioURL] = useState<string | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
     const streamRef = useRef<MediaStream | null>(null);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const recognitionRef = useRef<any>(null);
+    const transcriptRef = useRef('');
 
-    const transcriptRef = useRef(transcript);
-    transcriptRef.current = transcript;
+    const part1Text = answers['part1'] || '';
+    const part2Text = answers['part2'] || '';
+    const part3Text = answers['part3'] || '';
+    const currentText = activePart === 'part1' ? part1Text : activePart === 'part2' ? part2Text : part3Text;
+    const setCurrentText = (t: string) => setAnswer(activePart, t);
+    transcriptRef.current = currentText;
 
-    const wordCount = transcript.trim() ? transcript.trim().split(/\s+/).length : 0;
+    const wordCount = (t: string) => t.trim() ? t.trim().split(/\s+/).length : 0;
+    const totalWords = wordCount(part1Text) + wordCount(part2Text) + wordCount(part3Text);
+
+    const currentPrompt = activePart === 'part1' ? prompts?.part1 : activePart === 'part2' ? prompts?.part2 : prompts?.part3;
 
     const startRecording = async () => {
         try {
@@ -755,74 +753,66 @@ function SpeakingTestScreen({ prompt, transcript, setTranscript, timeLeft, isPau
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
             chunksRef.current = [];
-
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunksRef.current.push(e.data);
-            };
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
             mediaRecorder.onstop = () => {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
                 setAudioURL(URL.createObjectURL(blob));
                 stream.getTracks().forEach(t => t.stop());
             };
-
             mediaRecorder.start();
             setIsRecording(true);
 
             try {
-                const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-                if (SpeechRecognition) {
-                    const recognition = new SpeechRecognition();
+                const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                if (SR) {
+                    const recognition = new SR();
                     recognition.continuous = true;
                     recognition.interimResults = true;
                     recognition.lang = 'en-GB';
                     recognition.onresult = (event: any) => {
-                        let finalTranscript = '';
+                        let final = '';
                         for (let i = 0; i < event.results.length; i++) {
-                            if (event.results[i].isFinal) {
-                                finalTranscript += event.results[i][0].transcript + ' ';
-                            }
+                            if (event.results[i].isFinal) final += event.results[i][0].transcript + ' ';
                         }
-                        if (finalTranscript) {
-                            setTranscript((transcriptRef.current + ' ' + finalTranscript).trim());
-                        }
+                        if (final) setCurrentText((transcriptRef.current + ' ' + final).trim());
                     };
                     recognition.onerror = () => {};
                     recognition.start();
                     recognitionRef.current = recognition;
                 }
             } catch {}
-        } catch (err) {
-            console.error('Microphone access denied:', err);
-        }
+        } catch {}
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-            mediaRecorderRef.current.stop();
-        }
-        if (recognitionRef.current) {
-            try { recognitionRef.current.stop(); } catch {}
-        }
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
+        if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch {} }
         setIsRecording(false);
     };
 
     useEffect(() => {
         return () => {
-            if (recognitionRef.current) {
-                try { recognitionRef.current.stop(); } catch {}
-            }
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach(t => t.stop());
-            }
+            if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch {} }
+            if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
         };
     }, []);
+
+    const parts = ['part1', 'part2', 'part3'] as const;
+    const partLabels = { part1: 'Part 1 — General', part2: 'Part 2 — Cue Card', part3: 'Part 3 — Discussion' };
 
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)]">
             <div className="card p-4 mb-4 flex items-center justify-between sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
                 <div className="flex items-center gap-4">
                     <h3 className="font-black text-slate-900 dark:text-white">Speaking</h3>
-                    <span className="text-sm text-slate-500 font-bold">{wordCount} words transcribed</span>
+                    <div className="flex items-center gap-1 text-sm font-bold">
+                        {parts.map(p => (
+                            <button key={p} onClick={() => setActivePart(p)} className={`px-2 py-1 rounded-lg transition text-xs ${activePart === p ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'text-slate-500 hover:text-slate-700'}`}>
+                                {p.replace('part', 'P')}
+                            </button>
+                        ))}
+                    </div>
+                    <span className="text-xs text-slate-400">{totalWords}w total</span>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className={`flex items-center gap-2 font-mono text-lg font-black ${timeLeft < 300 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
@@ -835,20 +825,20 @@ function SpeakingTestScreen({ prompt, transcript, setTranscript, timeLeft, isPau
                 </div>
             </div>
 
-            {prompt && (
+            {currentPrompt && (
                 <div className="card p-5 mb-4">
                     <div className="flex items-center gap-2 mb-2">
                         <Mic className="w-4 h-4 text-rose-500" />
-                        <span className="font-black text-slate-900 dark:text-white text-sm">{prompt.title || `Part ${prompt.part}`}</span>
+                        <span className="font-black text-slate-900 dark:text-white text-sm">{partLabels[activePart]}</span>
                     </div>
-                    {prompt.cue_card && (
+                    {currentPrompt.cue_card && (
                         <div className="p-4 bg-rose-50 dark:bg-rose-900/10 rounded-xl border border-rose-200 dark:border-rose-800 mb-3">
-                            <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{prompt.cue_card}</p>
+                            <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{currentPrompt.cue_card}</p>
                         </div>
                     )}
-                    {prompt.questions?.length > 0 && (
+                    {currentPrompt.questions?.length > 0 && (
                         <div className="space-y-2">
-                            {prompt.questions.map((q: string, i: number) => (
+                            {currentPrompt.questions.map((q: string, i: number) => (
                                 <div key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
                                     <span className="font-black text-rose-500 shrink-0">Q{i + 1}.</span> {q}
                                 </div>
@@ -862,22 +852,15 @@ function SpeakingTestScreen({ prompt, transcript, setTranscript, timeLeft, isPau
                 <div className="card p-4">
                     <div className="flex items-center justify-between mb-3">
                         <span className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                            <Mic className="w-4 h-4 text-rose-500" />
-                            Voice Recording
+                            <Mic className="w-4 h-4 text-rose-500" /> Recording
                         </span>
                         <div className="flex items-center gap-2">
                             {!isRecording ? (
-                                <button
-                                    onClick={startRecording}
-                                    className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition"
-                                >
-                                    <Mic className="w-4 h-4" /> Start Recording
+                                <button onClick={startRecording} className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition">
+                                    <Mic className="w-4 h-4" /> Start
                                 </button>
                             ) : (
-                                <button
-                                    onClick={stopRecording}
-                                    className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition"
-                                >
+                                <button onClick={stopRecording} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition">
                                     <Square className="w-4 h-4" /> Stop
                                 </button>
                             )}
@@ -890,45 +873,36 @@ function SpeakingTestScreen({ prompt, transcript, setTranscript, timeLeft, isPau
                         </div>
                     )}
                     {audioURL && !isRecording && (
-                        <div className="mt-3">
-                            <audio controls src={audioURL} className="w-full h-10" />
-                        </div>
+                        <div className="mt-3"><audio controls src={audioURL} className="w-full h-10" /></div>
                     )}
                 </div>
 
                 <div className="card p-4 flex-1">
                     <div className="flex items-center justify-between mb-3">
                         <span className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-slate-400" />
-                            Transcript
+                            <FileText className="w-4 h-4 text-slate-400" /> Transcript
                         </span>
-                        <span className={`text-xs font-bold ${transcript.trim() ? 'text-emerald-600' : 'text-slate-400'}`}>
-                            {wordCount} words
+                        <span className={`text-xs font-bold ${currentText.trim() ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            {wordCount(currentText)} words
                         </span>
                     </div>
                     <textarea
-                        ref={textareaRef}
-                        value={transcript}
-                        onChange={(e) => setTranscript(e.target.value)}
-                        placeholder="Your speech will be transcribed here automatically, or type manually..."
-                        className="w-full min-h-[120px] bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm leading-relaxed focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition resize-none"
+                        value={currentText}
+                        onChange={(e) => setCurrentText(e.target.value)}
+                        placeholder="Speech transcribed here automatically, or type manually..."
+                        className="w-full min-h-[100px] bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm leading-relaxed focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition resize-none"
                     />
                 </div>
             </div>
 
             <div className="card p-4 mt-4 flex items-center justify-between">
                 <span className="text-sm text-slate-500 font-bold">
-                    {transcript.trim() ? 'Ready to submit' : 'Record or type your response'}
+                    {totalWords > 0 ? `${totalWords} words across all parts` : 'Record or type your response'}
                 </span>
-                <button
-                    onClick={onSubmit}
-                    disabled={loading || !transcript.trim()}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20"
-                >
-                    {loading ? 'Submitting...' : 'Submit Response'}
+                <button onClick={onSubmit} disabled={loading || totalWords === 0} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20">
+                    {loading ? 'Submitting...' : 'Submit Speaking'}
                 </button>
             </div>
-
             {error && <div className="card p-4 mt-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 text-sm">{error}</div>}
         </div>
     );
@@ -957,28 +931,43 @@ function ReviewScreen({ section, result, onContinue, onBack }: { section: Sectio
                     </div>
                 )}
 
-                {raw.words !== undefined && raw.feedback && (
-                    <div className="mt-6 text-sm text-slate-500">
-                        <span className="font-bold">{raw.words} words</span>
-                        <p className="mt-2 text-left max-w-md mx-auto">{raw.feedback}</p>
+                {raw.tasks && Object.keys(raw.tasks).length > 0 && (
+                    <div className="mt-6 space-y-3 text-sm">
+                        {Object.entries(raw.tasks).map(([task, data]: [string, any]) => (
+                            <div key={task} className="text-left max-w-md mx-auto p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="font-black text-slate-900 dark:text-white">{task === 'task1' ? 'Task 1' : 'Task 2'}</span>
+                                    <span className="font-bold text-blue-600">{data.score?.toFixed(1)} · {data.words}w</span>
+                                </div>
+                                {data.feedback && <p className="text-slate-500 text-xs">{data.feedback}</p>}
+                            </div>
+                        ))}
                     </div>
                 )}
 
-                {raw.words !== undefined && raw.sentences && (
+                {raw.parts && Object.keys(raw.parts).length > 0 && (
+                    <div className="mt-6 space-y-3 text-sm">
+                        {Object.entries(raw.parts).map(([part, data]: [string, any]) => (
+                            <div key={part} className="text-left max-w-md mx-auto p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="font-black text-slate-900 dark:text-white">{part === 'part1' ? 'Part 1' : part === 'part2' ? 'Part 2' : 'Part 3'}</span>
+                                    <span className="font-bold text-blue-600">{data.band?.toFixed(1)} · {data.words}w</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {raw.total_words && !raw.tasks && !raw.parts && (
                     <div className="mt-6 text-sm text-slate-500">
-                        <span className="font-bold">{raw.words} words spoken</span>
-                        <span className="text-slate-400 ml-2">({raw.sentences} sentences)</span>
+                        <span className="font-bold">{raw.total_words} words</span>
                     </div>
                 )}
             </motion.div>
 
             <div className="flex gap-4 justify-center">
-                <button onClick={onBack} className="px-6 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-black rounded-xl transition">
-                    Back to Sections
-                </button>
-                <button onClick={onContinue} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20">
-                    Continue
-                </button>
+                <button onClick={onBack} className="px-6 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-black rounded-xl transition">Back</button>
+                <button onClick={onContinue} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20">Continue</button>
             </div>
         </div>
     );
@@ -988,13 +977,9 @@ function ReviewScreen({ section, result, onContinue, onBack }: { section: Sectio
 function ResultsScreen({ results, onBack }: { results: Record<string, MockSessionResult>; onBack: () => void }) {
     const sectionEntries = Object.entries(results);
     const scores = sectionEntries.map(([sec, res]) => {
-        const s = res?.scores || {};
+        const s = (res?.scores || {}) as Record<string, any>;
         const config = SECTIONS.find(s2 => s2.id === sec.toUpperCase() as Section);
-        return {
-            section: sec,
-            band: (s as any)[sec] || 0,
-            config,
-        };
+        return { section: sec, band: s[sec] || 0, config };
     }).filter(s => s.config);
     const overall = scores.length > 0
         ? (scores.reduce((sum, s) => sum + (typeof s.band === 'number' ? s.band : 0), 0) / scores.length).toFixed(1)
@@ -1007,12 +992,10 @@ function ResultsScreen({ results, onBack }: { results: Record<string, MockSessio
                 <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-2">Mock Test Results</h1>
                 <p className="text-slate-500 font-medium">Your IELTS estimated performance</p>
             </div>
-
             <div className="card p-10 text-center mb-8">
                 <div className="text-7xl font-black text-blue-600 mb-2">{overall}</div>
                 <p className="text-slate-500 font-bold uppercase tracking-widest text-sm">Overall Estimated Band</p>
             </div>
-
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {scores.map(({ section, band, config }) => {
                     if (!config) return null;
@@ -1026,7 +1009,6 @@ function ResultsScreen({ results, onBack }: { results: Record<string, MockSessio
                     );
                 })}
             </div>
-
             <button onClick={onBack} className="w-full py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-black rounded-2xl transition">
                 Back to Mock Test
             </button>
