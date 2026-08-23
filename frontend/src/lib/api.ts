@@ -943,6 +943,12 @@ class ApiClient {
         return `${this.baseUrl}/listening/audio/${questionId}`;
     }
 
+    getTtsUrl(text: string, voice?: string) {
+        const params = new URLSearchParams({ text });
+        if (voice) params.set('voice', voice);
+        return `${this.baseUrl}/tts?${params.toString()}`;
+    }
+
 }
 
 export const api = new ApiClient(API_URL);

@@ -509,15 +509,14 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
     const isListening = section === 'LISTENING';
     const groupedQuestions = section === 'READING' ? groupByPassage(questions) : isListening ? groupBySection(questions) : null;
 
-    // TTS state for listening
+    // TTS state for listening — uses backend Edge TTS (natural British voice)
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentPlayingIdx, setCurrentPlayingIdx] = useState<number | null>(null);
-    const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
 
-    const playAllPassages = useCallback(() => {
+    const playAllPassages = useCallback(async () => {
         if (!isListening) return;
-        const synth = window.speechSynthesis;
-        if (synth.speaking) { synth.cancel(); setIsPlaying(false); setCurrentPlayingIdx(null); return; }
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setIsPlaying(false); setCurrentPlayingIdx(null); return; }
 
         const passages: { title: string; text: string }[] = [];
         const seen = new Set<string>();
@@ -532,41 +531,36 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
         setIsPlaying(true);
         let idx = 0;
 
-        const speakNext = () => {
-            if (idx >= passages.length) { setIsPlaying(false); setCurrentPlayingIdx(null); return; }
+        const playNext = () => {
+            if (idx >= passages.length) { setIsPlaying(false); setCurrentPlayingIdx(null); audioRef.current = null; return; }
             setCurrentPlayingIdx(idx);
-            const utt = new SpeechSynthesisUtterance(passages[idx].text);
-            utt.lang = 'en-GB';
-            utt.rate = 0.95;
-            utt.onend = () => { idx++; speakNext(); };
-            utt.onerror = () => { setIsPlaying(false); setCurrentPlayingIdx(null); };
-            utteranceRef.current = utt;
-            synth.speak(utt);
+            const audio = new Audio(api.getTtsUrl(passages[idx].text));
+            audioRef.current = audio;
+            audio.onended = () => { idx++; playNext(); };
+            audio.onerror = () => { setIsPlaying(false); setCurrentPlayingIdx(null); audioRef.current = null; };
+            audio.play().catch(() => { setIsPlaying(false); setCurrentPlayingIdx(null); });
         };
-        speakNext();
+        playNext();
     }, [isListening, questions]);
 
-    const playSinglePassage = useCallback((passage: string, title: string) => {
-        const synth = window.speechSynthesis;
-        if (synth.speaking) { synth.cancel(); setIsPlaying(false); setCurrentPlayingIdx(null); return; }
+    const playSinglePassage = useCallback((passage: string) => {
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setIsPlaying(false); setCurrentPlayingIdx(null); }
         setIsPlaying(true);
-        const utt = new SpeechSynthesisUtterance(passage);
-        utt.lang = 'en-GB';
-        utt.rate = 0.95;
-        utt.onend = () => { setIsPlaying(false); setCurrentPlayingIdx(null); };
-        utt.onerror = () => { setIsPlaying(false); setCurrentPlayingIdx(null); };
-        utteranceRef.current = utt;
-        synth.speak(utt);
+        const audio = new Audio(api.getTtsUrl(passage));
+        audioRef.current = audio;
+        audio.onended = () => { setIsPlaying(false); setCurrentPlayingIdx(null); audioRef.current = null; };
+        audio.onerror = () => { setIsPlaying(false); setCurrentPlayingIdx(null); audioRef.current = null; };
+        audio.play().catch(() => { setIsPlaying(false); setCurrentPlayingIdx(null); });
     }, []);
 
     const stopPlayback = useCallback(() => {
-        window.speechSynthesis.cancel();
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
         setIsPlaying(false);
         setCurrentPlayingIdx(null);
     }, []);
 
     useEffect(() => {
-        return () => { window.speechSynthesis.cancel(); };
+        return () => { if (audioRef.current) audioRef.current.pause(); };
     }, []);
 
     return (
@@ -648,7 +642,7 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                                     </div>
                                     <div className="text-center py-3">
                                         <button
-                                            onClick={() => passageText ? playSinglePassage(passageText, group.section_label) : undefined}
+                                            onClick={() => passageText ? playSinglePassage(passageText) : undefined}
                                             disabled={!passageText}
                                             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition inline-flex items-center gap-2"
                                         >

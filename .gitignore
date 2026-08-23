@@ -39,5 +39,8 @@ backend/jana.db
 *.sqlite3
 *.db
 
+# Audio cache (Edge TTS)
+audio_cache/
+
 # Logs
 *.log

@@ -17,5 +17,6 @@ from .study_plan import router as study_plan_router
 from .prompts import router as prompts_router
 from .plan import router as plan_router
 from .diagnostic import router as diagnostic_router
+from .tts import router as tts_router
 
 
