@@ -753,7 +753,7 @@ function QuestionCard({ question, index, answer, onAnswer, section }: {
     );
 }
 
-// ========== WRITING TEST SCREEN (Multi-task) ==========
+// ========== WRITING TEST SCREEN (Multi-task with split timer) ==========
 function WritingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
     prompts: { task1: WritingPromptData | null; task2: WritingPromptData | null } | null;
     answers: Record<number | string, string>;
@@ -761,7 +761,27 @@ function WritingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, se
     timeLeft: number; isPaused: boolean; setIsPaused: (p: boolean) => void;
     onSubmit: () => void; loading: boolean; error: string | null;
 }) {
+    const TASK1_TIME = 20 * 60;
+    const TASK2_TIME = 40 * 60;
+    const totalTime = TASK1_TIME + TASK2_TIME;
+
     const [activeTask, setActiveTask] = useState<'task1' | 'task2'>('task1');
+    const [task1TimeLeft, setTask1TimeLeft] = useState(TASK1_TIME);
+    const [autoSwitched, setAutoSwitched] = useState(false);
+
+    const elapsed = totalTime - timeLeft;
+    const t1Elapsed = Math.min(elapsed, TASK1_TIME);
+    const t2Elapsed = Math.max(0, elapsed - TASK1_TIME);
+    const t1Remaining = Math.max(0, TASK1_TIME - t1Elapsed);
+    const t2Remaining = Math.max(0, TASK2_TIME - t2Elapsed);
+
+    useEffect(() => {
+        if (!isPaused && elapsed >= TASK1_TIME && activeTask === 'task1' && !autoSwitched) {
+            setActiveTask('task2');
+            setAutoSwitched(true);
+        }
+    }, [elapsed, activeTask, autoSwitched, isPaused]);
+
     const task1Text = answers['task1'] || '';
     const task2Text = answers['task2'] || '';
     const currentText = activeTask === 'task1' ? task1Text : task2Text;
@@ -774,6 +794,8 @@ function WritingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, se
     const currentPrompt = activeTask === 'task1' ? prompts?.task1 : prompts?.task2;
     const minWords = currentPrompt?.word_limit || (activeTask === 'task1' ? 150 : 250);
     const hasEnough = currentWords >= minWords;
+    const activeTimeLeft = activeTask === 'task1' ? t1Remaining : t2Remaining;
+    const activeTimePct = activeTask === 'task1' ? (t1Elapsed / TASK1_TIME * 100) : (t2Elapsed / TASK2_TIME * 100);
 
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -781,11 +803,13 @@ function WritingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, se
                 <div className="flex items-center gap-4">
                     <h3 className="font-black text-slate-900 dark:text-white">Writing</h3>
                     <div className="flex items-center gap-2 text-sm font-bold">
-                        <button onClick={() => setActiveTask('task1')} className={`px-3 py-1 rounded-lg transition ${activeTask === 'task1' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-                            Task 1 <span className="ml-1 text-xs">({t1Words}w)</span>
+                        <button onClick={() => setActiveTask('task1')} className={`px-3 py-1.5 rounded-lg transition ${activeTask === 'task1' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+                            Task 1
+                            <span className="ml-1.5 text-xs font-mono">{formatTime(t1Remaining)}</span>
                         </button>
-                        <button onClick={() => setActiveTask('task2')} className={`px-3 py-1 rounded-lg transition ${activeTask === 'task2' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-                            Task 2 <span className="ml-1 text-xs">({t2Words}w)</span>
+                        <button onClick={() => setActiveTask('task2')} className={`px-3 py-1.5 rounded-lg transition ${activeTask === 'task2' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+                            Task 2
+                            <span className="ml-1.5 text-xs font-mono">{formatTime(t2Remaining)}</span>
                         </button>
                     </div>
                 </div>
@@ -800,11 +824,17 @@ function WritingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, se
                 </div>
             </div>
 
+            <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mb-4 overflow-hidden">
+                <motion.div className="h-full rounded-full" animate={{ width: `${activeTimePct}%` }}
+                    style={{ backgroundColor: activeTimeLeft < 120 ? '#ef4444' : activeTimeLeft < 300 ? '#f59e0b' : '#2563eb' }} />
+            </div>
+
             {currentPrompt && (
                 <div className="card p-5 mb-4">
                     <div className="flex items-center gap-2 mb-2">
                         <PenTool className="w-4 h-4 text-amber-500" />
                         <span className="font-black text-slate-900 dark:text-white text-sm">{currentPrompt.title}</span>
+                        <span className="text-xs text-slate-400 ml-auto">Min {minWords} words</span>
                     </div>
                     <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap">{currentPrompt.prompt_text}</p>
                 </div>
@@ -825,6 +855,8 @@ function WritingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, se
                         {currentWords}/{minWords} words
                     </span>
                     {!hasEnough && <span className="text-amber-500">Need {minWords - currentWords} more</span>}
+                    <span className="text-slate-400">|</span>
+                    <span className="text-slate-500">{t1Words + t2Words} total</span>
                 </div>
                 <button onClick={onSubmit} disabled={loading || (t1Words === 0 && t2Words === 0)} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20">
                     {loading ? 'Submitting...' : 'Submit Writing'}
@@ -835,7 +867,7 @@ function WritingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, se
     );
 }
 
-// ========== SPEAKING TEST SCREEN (Multi-part) ==========
+// ========== SPEAKING TEST SCREEN (Multi-part with prep/speak phases) ==========
 function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, setIsPaused, onSubmit, loading, error }: {
     prompts: { part1: SpeakingPromptData | null; part2: SpeakingPromptData | null; part3: SpeakingPromptData | null } | null;
     answers: Record<number | string, string>;
@@ -843,14 +875,22 @@ function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, s
     timeLeft: number; isPaused: boolean; setIsPaused: (p: boolean) => void;
     onSubmit: () => void; loading: boolean; error: string | null;
 }) {
+    const PART1_TIME = 3 * 60;
+    const PART2_PREP = 60;
+    const PART2_SPEAK = 2 * 60;
+    const PART3_TIME = 3 * 60;
+
     const [activePart, setActivePart] = useState<'part1' | 'part2' | 'part3'>('part1');
+    const [speakingPhase, setSpeakingPhase] = useState<'prep' | 'speaking'>('speaking');
+    const [phaseTimeLeft, setPhaseTimeLeft] = useState(PART1_TIME);
     const [isRecording, setIsRecording] = useState(false);
-    const [audioURL, setAudioURL] = useState<string | null>(null);
+    const [audioURLs, setAudioURLs] = useState<Record<string, string>>({});
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
     const streamRef = useRef<MediaStream | null>(null);
     const recognitionRef = useRef<any>(null);
     const transcriptRef = useRef('');
+    const phaseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const part1Text = answers['part1'] || '';
     const part2Text = answers['part2'] || '';
@@ -864,6 +904,66 @@ function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, s
 
     const currentPrompt = activePart === 'part1' ? prompts?.part1 : activePart === 'part2' ? prompts?.part2 : prompts?.part3;
 
+    const parts = ['part1', 'part2', 'part3'] as const;
+    const partLabels = { part1: 'Part 1 — General', part2: 'Part 2 — Cue Card', part3: 'Part 3 — Discussion' };
+
+    const getPartConfig = (part: string) => {
+        if (part === 'part1') return { prepTime: 0, speakTime: PART1_TIME };
+        if (part === 'part2') return { prepTime: PART2_PREP, speakTime: PART2_SPEAK };
+        return { prepTime: 0, speakTime: PART3_TIME };
+    };
+
+    // Phase timer for prep/speak auto-advance
+    useEffect(() => {
+        if (isPaused || speakingPhase === 'prep' && activePart !== 'part2') return;
+
+        phaseTimerRef.current = setInterval(() => {
+            setPhaseTimeLeft(prev => {
+                if (prev <= 1) {
+                    if (speakingPhase === 'prep' && activePart === 'part2') {
+                        setSpeakingPhase('speaking');
+                        setPhaseTimeLeft(PART2_SPEAK);
+                        startRecording();
+                    } else {
+                        advancePart();
+                    }
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => { if (phaseTimerRef.current) clearInterval(phaseTimerRef.current); };
+    }, [activePart, speakingPhase, isPaused]);
+
+    const advancePart = () => {
+        stopRecording();
+        if (activePart === 'part1') {
+            setActivePart('part2');
+            setSpeakingPhase('prep');
+            setPhaseTimeLeft(PART2_PREP);
+        } else if (activePart === 'part2') {
+            setActivePart('part3');
+            setSpeakingPhase('speaking');
+            setPhaseTimeLeft(PART3_TIME);
+        } else {
+            onSubmit();
+        }
+    };
+
+    const switchToPart = (part: 'part1' | 'part2' | 'part3') => {
+        stopRecording();
+        setActivePart(part);
+        const config = getPartConfig(part);
+        if (config.prepTime > 0 && !(answers[part] || '').trim()) {
+            setSpeakingPhase('prep');
+            setPhaseTimeLeft(config.prepTime);
+        } else {
+            setSpeakingPhase('speaking');
+            setPhaseTimeLeft(config.speakTime);
+        }
+    };
+
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -874,7 +974,7 @@ function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, s
             mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
             mediaRecorder.onstop = () => {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-                setAudioURL(URL.createObjectURL(blob));
+                setAudioURLs(prev => ({ ...prev, [activePart]: URL.createObjectURL(blob) }));
                 stream.getTracks().forEach(t => t.stop());
             };
             mediaRecorder.start();
@@ -912,11 +1012,14 @@ function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, s
         return () => {
             if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch {} }
             if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+            if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
         };
     }, []);
 
-    const parts = ['part1', 'part2', 'part3'] as const;
-    const partLabels = { part1: 'Part 1 — General', part2: 'Part 2 — Cue Card', part3: 'Part 3 — Discussion' };
+    const partProgress = parts.map(p => {
+        const text = answers[p] || '';
+        return { part: p, hasContent: !!text.trim() };
+    });
 
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -925,23 +1028,41 @@ function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, s
                     <h3 className="font-black text-slate-900 dark:text-white">Speaking</h3>
                     <div className="flex items-center gap-1 text-sm font-bold">
                         {parts.map(p => (
-                            <button key={p} onClick={() => setActivePart(p)} className={`px-2 py-1 rounded-lg transition text-xs ${activePart === p ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'text-slate-500 hover:text-slate-700'}`}>
+                            <button key={p} onClick={() => switchToPart(p)} className={`px-2 py-1 rounded-lg transition text-xs flex items-center gap-1 ${activePart === p ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : partProgress.find(pp => pp.part === p)?.hasContent ? 'text-emerald-500' : 'text-slate-500 hover:text-slate-700'}`}>
                                 {p.replace('part', 'P')}
+                                {partProgress.find(pp => pp.part === p)?.hasContent && <CheckCircle2 className="w-3 h-3" />}
                             </button>
                         ))}
                     </div>
-                    <span className="text-xs text-slate-400">{totalWords}w total</span>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className={`flex items-center gap-2 font-mono text-lg font-black ${timeLeft < 300 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
-                        <Clock className="w-5 h-5" />
-                        {formatTime(timeLeft)}
+                    <div className="text-center">
+                        <div className={`font-mono text-lg font-black ${phaseTimeLeft < 30 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
+                            {formatTime(phaseTimeLeft)}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-bold uppercase">
+                            {speakingPhase === 'prep' ? 'Prep Time' : 'Speaking Time'}
+                        </div>
                     </div>
                     <button onClick={() => setIsPaused(!isPaused)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition">
                         {isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
                     </button>
                 </div>
             </div>
+
+            {speakingPhase === 'prep' && activePart === 'part2' && (
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="card p-4 mb-4 bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                            <Clock className="w-5 h-5 text-amber-600" />
+                        </div>
+                        <div>
+                            <p className="font-black text-amber-700 dark:text-amber-300 text-sm">Preparation Time</p>
+                            <p className="text-xs text-amber-600 dark:text-amber-400">Read the cue card carefully. You will have {PART2_SPEAK / 60} minutes to speak after this.</p>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
 
             {currentPrompt && (
                 <div className="card p-5 mb-4">
@@ -967,33 +1088,35 @@ function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, s
             )}
 
             <div className="flex-1 flex flex-col gap-4 overflow-y-auto">
-                <div className="card p-4">
-                    <div className="flex items-center justify-between mb-3">
-                        <span className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                            <Mic className="w-4 h-4 text-rose-500" /> Recording
-                        </span>
-                        <div className="flex items-center gap-2">
-                            {!isRecording ? (
-                                <button onClick={startRecording} className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition">
-                                    <Mic className="w-4 h-4" /> Start
-                                </button>
-                            ) : (
-                                <button onClick={stopRecording} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition">
-                                    <Square className="w-4 h-4" /> Stop
-                                </button>
-                            )}
+                {speakingPhase === 'speaking' && (
+                    <div className="card p-4">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                                <Mic className="w-4 h-4 text-rose-500" /> Recording
+                            </span>
+                            <div className="flex items-center gap-2">
+                                {!isRecording ? (
+                                    <button onClick={startRecording} className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition">
+                                        <Mic className="w-4 h-4" /> Start
+                                    </button>
+                                ) : (
+                                    <button onClick={stopRecording} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition">
+                                        <Square className="w-4 h-4" /> Stop
+                                    </button>
+                                )}
+                            </div>
                         </div>
+                        {isRecording && (
+                            <div className="flex items-center gap-3 p-3 bg-rose-50 dark:bg-rose-900/10 rounded-xl">
+                                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                                <span className="text-sm font-bold text-rose-600">Recording... Speak now</span>
+                            </div>
+                        )}
+                        {audioURLs[activePart] && !isRecording && (
+                            <div className="mt-3"><audio controls src={audioURLs[activePart]} className="w-full h-10" /></div>
+                        )}
                     </div>
-                    {isRecording && (
-                        <div className="flex items-center gap-3 p-3 bg-rose-50 dark:bg-rose-900/10 rounded-xl">
-                            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                            <span className="text-sm font-bold text-rose-600">Recording... Speak now</span>
-                        </div>
-                    )}
-                    {audioURL && !isRecording && (
-                        <div className="mt-3"><audio controls src={audioURL} className="w-full h-10" /></div>
-                    )}
-                </div>
+                )}
 
                 <div className="card p-4 flex-1">
                     <div className="flex items-center justify-between mb-3">
@@ -1017,9 +1140,16 @@ function SpeakingTestScreen({ prompts, answers, setAnswer, timeLeft, isPaused, s
                 <span className="text-sm text-slate-500 font-bold">
                     {totalWords > 0 ? `${totalWords} words across all parts` : 'Record or type your response'}
                 </span>
-                <button onClick={onSubmit} disabled={loading || totalWords === 0} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20">
-                    {loading ? 'Submitting...' : 'Submit Speaking'}
-                </button>
+                <div className="flex items-center gap-3">
+                    {activePart !== 'part3' && (
+                        <button onClick={advancePart} className="px-6 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl transition text-sm">
+                            Skip to {activePart === 'part1' ? 'Part 2' : 'Part 3'}
+                        </button>
+                    )}
+                    <button onClick={onSubmit} disabled={loading || totalWords === 0} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20">
+                        {loading ? 'Submitting...' : 'Submit Speaking'}
+                    </button>
+                </div>
             </div>
             {error && <div className="card p-4 mt-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 text-sm">{error}</div>}
         </div>
