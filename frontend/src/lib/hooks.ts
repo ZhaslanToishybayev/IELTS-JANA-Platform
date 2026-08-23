@@ -138,3 +138,21 @@ export function useAdminDashboard() {
         enabled: !!token,
     });
 }
+
+export function useAdminMockResults(limit = 50, offset = 0, status?: string) {
+    const { token } = useAuth();
+    return useQuery({
+        queryKey: ['adminMockResults', limit, offset, status],
+        queryFn: () => api.getAdminMockResults(token!, limit, offset, status),
+        enabled: !!token,
+    });
+}
+
+export function useAdminMockSummary() {
+    const { token } = useAuth();
+    return useQuery({
+        queryKey: ['adminMockSummary'],
+        queryFn: () => api.getAdminMockSummary(token!),
+        enabled: !!token,
+    });
+}

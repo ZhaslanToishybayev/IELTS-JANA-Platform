@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import case, func
+from sqlalchemy import case, func, Float
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timedelta, UTC
@@ -700,3 +700,70 @@ async def admin_toggle_speaking_prompt(
     prompt.is_active = not prompt.is_active
     db.commit()
     return {"is_active": prompt.is_active}
+
+
+# ============ Mock Test Results ============
+
+from ..models import MockTestSession
+
+
+@router.get("/mock-results")
+def admin_get_mock_results(
+    limit: int = 50,
+    offset: int = 0,
+    status_filter: str | None = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Return all mock test sessions with user info and scores."""
+    from ..models import User as UserModel
+    query = db.query(MockTestSession).join(UserModel, MockTestSession.user_id == UserModel.id)
+    if status_filter:
+        query = query.filter(MockTestSession.status == status_filter)
+    total = query.count()
+    sessions = query.order_by(MockTestSession.start_time.desc()).offset(offset).limit(limit).all()
+    return {
+        "total": total,
+        "sessions": [
+            {
+                "id": s.id,
+                "user_id": s.user_id,
+                "user_name": s.user.full_name if s.user else "Unknown",
+                "user_email": s.user.email if s.user else "",
+                "status": s.status,
+                "current_section": s.current_section,
+                "start_time": s.start_time.isoformat() if s.start_time else None,
+                "end_time": s.end_time.isoformat() if s.end_time else None,
+                "scores": s.scores,
+                "answers_count": len(s.answers) if s.answers else 0,
+            }
+            for s in sessions
+        ],
+    }
+
+
+@router.get("/mock-results/summary")
+def admin_get_mock_summary(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Return aggregate mock test statistics."""
+    from sqlalchemy import func as sqlfunc
+    total = db.query(MockTestSession).count()
+    completed = db.query(MockTestSession).filter(MockTestSession.status == "COMPLETED").count()
+    in_progress = db.query(MockTestSession).filter(MockTestSession.status == "IN_PROGRESS").count()
+
+    # Average scores per section
+    avg_scores = {}
+    for section in ["listening", "reading", "writing", "speaking"]:
+        result = db.query(sqlfunc.avg(sqlfunc.cast(
+            MockTestSession.scores[(section)].as_float(), Float
+        ))).filter(MockTestSession.scores[(section)].isnot(None)).scalar()
+        avg_scores[section] = round(float(result), 2) if result else None
+
+    return {
+        "total_sessions": total,
+        "completed": completed,
+        "in_progress": in_progress,
+        "avg_scores": avg_scores,
+    }

@@ -452,6 +452,35 @@ class ApiClient {
         }>('/admin/dashboard', { token });
     }
 
+    async getAdminMockResults(token: string, limit = 50, offset = 0, status?: string) {
+        const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+        if (status) params.set('status_filter', status);
+        return this.fetch<{
+            total: number;
+            sessions: {
+                id: string;
+                user_id: number;
+                user_name: string;
+                user_email: string;
+                status: string;
+                current_section: string;
+                start_time: string | null;
+                end_time: string | null;
+                scores: Record<string, number | null> | null;
+                answers_count: number;
+            }[];
+        }>(`/admin/mock-results?${params.toString()}`, { token });
+    }
+
+    async getAdminMockSummary(token: string) {
+        return this.fetch<{
+            total_sessions: number;
+            completed: number;
+            in_progress: number;
+            avg_scores: Record<string, number | null>;
+        }>('/admin/mock-results/summary', { token });
+    }
+
     async getAdminContent(token: string, statusFilter = 'all', module?: string) {
         const params = new URLSearchParams({ status_filter: statusFilter });
         if (module) params.append('module', module);
