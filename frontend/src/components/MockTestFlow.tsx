@@ -506,7 +506,70 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
     const config = SECTIONS.find(s => s.id === section)!;
     const answeredCount = Object.keys(answers).length;
     const pct = Math.round((answeredCount / Math.max(questions.length, 1)) * 100);
+    const isListening = section === 'LISTENING';
     const groupedQuestions = section === 'READING' ? groupByPassage(questions) : null;
+
+    // TTS state for listening
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentPlayingIdx, setCurrentPlayingIdx] = useState<number | null>(null);
+    const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+    const playAllPassages = useCallback(() => {
+        if (!isListening) return;
+        const synth = window.speechSynthesis;
+        if (synth.speaking) { synth.cancel(); setIsPlaying(false); setCurrentPlayingIdx(null); return; }
+
+        const passages = questions.filter(q => q.passage);
+        const uniquePassages: { title: string; text: string }[] = [];
+        const seen = new Set<string>();
+        for (const q of passages) {
+            if (!seen.has(q.passage)) {
+                seen.add(q.passage);
+                uniquePassages.push({ title: q.passage_title || 'Passage', text: q.passage });
+            }
+        }
+        if (uniquePassages.length === 0) return;
+
+        setIsPlaying(true);
+        let idx = 0;
+
+        const speakNext = () => {
+            if (idx >= uniquePassages.length) { setIsPlaying(false); setCurrentPlayingIdx(null); return; }
+            const p = uniquePassages[idx];
+            setCurrentPlayingIdx(idx);
+            const utt = new SpeechSynthesisUtterance(p.text);
+            utt.lang = 'en-GB';
+            utt.rate = 0.95;
+            utt.onend = () => { idx++; speakNext(); };
+            utt.onerror = () => { setIsPlaying(false); setCurrentPlayingIdx(null); };
+            utteranceRef.current = utt;
+            synth.speak(utt);
+        };
+        speakNext();
+    }, [isListening, questions]);
+
+    const playSinglePassage = useCallback((passage: string, title: string) => {
+        const synth = window.speechSynthesis;
+        if (synth.speaking) { synth.cancel(); setIsPlaying(false); setCurrentPlayingIdx(null); return; }
+        setIsPlaying(true);
+        const utt = new SpeechSynthesisUtterance(passage);
+        utt.lang = 'en-GB';
+        utt.rate = 0.95;
+        utt.onend = () => { setIsPlaying(false); setCurrentPlayingIdx(null); };
+        utt.onerror = () => { setIsPlaying(false); setCurrentPlayingIdx(null); };
+        utteranceRef.current = utt;
+        synth.speak(utt);
+    }, []);
+
+    const stopPlayback = useCallback(() => {
+        window.speechSynthesis.cancel();
+        setIsPlaying(false);
+        setCurrentPlayingIdx(null);
+    }, []);
+
+    useEffect(() => {
+        return () => { window.speechSynthesis.cancel(); };
+    }, []);
 
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -514,6 +577,14 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                 <div className="flex items-center gap-4">
                     <h3 className="font-black text-slate-900 dark:text-white">{config.title}</h3>
                     <span className="text-sm text-slate-500 font-bold">{answeredCount}/{questions.length}</span>
+                    {isListening && (
+                        <button
+                            onClick={isPlaying ? stopPlayback : playAllPassages}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition ${isPlaying ? 'bg-red-100 dark:bg-red-900/20 text-red-600 hover:bg-red-200' : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-200'}`}
+                        >
+                            {isPlaying ? <><Square className="w-3.5 h-3.5" /> Stop Audio</> : <><Volume2 className="w-3.5 h-3.5" /> Play All Passages</>}
+                        </button>
+                    )}
                 </div>
                 <div className="flex items-center gap-4">
                     <div className={`flex items-center gap-2 font-mono text-lg font-black ${timeLeft < 300 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
@@ -530,17 +601,44 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                 <motion.div className="h-full bg-blue-600 rounded-full" animate={{ width: `${pct}%` }} />
             </div>
 
+            {isListening && isPlaying && (
+                <div className="card p-3 mb-4 flex items-center gap-3 bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    <span className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                        {currentPlayingIdx !== null ? `Playing passage ${currentPlayingIdx + 1}...` : 'Starting audio...'}
+                    </span>
+                </div>
+            )}
+
             <div className="flex-1 overflow-y-auto space-y-4 pb-4">
                 {groupedQuestions ? (
                     groupedQuestions.map((group, gIdx) => (
                         <div key={gIdx} className="space-y-4">
                             {group.passage && (
                                 <div className="card p-6">
-                                    <h4 className="font-black text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                                        <BookOpen className="w-4 h-4 text-purple-500" />
-                                        {group.passage_title || `Passage ${gIdx + 1}`}
-                                    </h4>
-                                    <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">{group.passage}</div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                            <BookOpen className="w-4 h-4 text-purple-500" />
+                                            {group.passage_title || `Passage ${gIdx + 1}`}
+                                        </h4>
+                                        {!isListening && (
+                                            <span className="text-xs text-slate-400">Read carefully</span>
+                                        )}
+                                    </div>
+                                    {isListening ? (
+                                        <div className="text-center py-6">
+                                            <Volume2 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
+                                            <p className="text-sm text-slate-500 font-medium mb-3">Audio passage — click play to listen</p>
+                                            <button
+                                                onClick={() => playSinglePassage(group.passage!, group.passage_title || `Passage ${gIdx + 1}`)}
+                                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition"
+                                            >
+                                                <Volume2 className="w-4 h-4 inline mr-1" /> Play This Passage
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">{group.passage}</div>
+                                    )}
                                 </div>
                             )}
                             {group.questions.map((q: any, idx: number) => (
@@ -550,7 +648,27 @@ function TestScreen({ section, questions, answers, setAnswer, timeLeft, isPaused
                     ))
                 ) : (
                     questions.map((q, idx) => (
-                        <QuestionCard key={q.id} question={q} index={idx} answer={answers[q.id] || ''} onAnswer={(ans) => setAnswer(q.id, ans)} section={section} />
+                        <div key={q.id}>
+                            {isListening && q.passage && idx === questions.findIndex(qq => qq.passage === q.passage) && (
+                                <div className="card p-6 mb-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                            <Volume2 className="w-4 h-4 text-blue-500" />
+                                            Listening Passage
+                                        </h4>
+                                    </div>
+                                    <div className="text-center py-4">
+                                        <button
+                                            onClick={() => playSinglePassage(q.passage, q.passage_title || 'Listening Passage')}
+                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition"
+                                        >
+                                            <Volume2 className="w-4 h-4 inline mr-1" /> Play Audio
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            <QuestionCard question={q} index={idx} answer={answers[q.id] || ''} onAnswer={(ans) => setAnswer(q.id, ans)} section={section} />
+                        </div>
                     ))
                 )}
             </div>
